@@ -1,0 +1,246 @@
+{
+  "entities": {
+    "Merchant": {
+      "title": "Merchant",
+      "description": "A business owner using the SaaS platform.",
+      "type": "object",
+      "properties": {
+        "businessName": { "type": "string", "description": "The name of the business." },
+        "ownerName": { "type": "string", "description": "The name of the business owner." },
+        "email": { "type": "string", "description": "Business email." },
+        "phone": { "type": "string", "description": "WhatsApp/Contact phone number." },
+        "gstin": { "type": "string", "description": "GST Identification Number (optional)." },
+        "category": { "type": "string", "description": "Business category." },
+        "upiId": { "type": "string", "description": "UPI ID for payment collection." },
+        "address": { "type": "string", "description": "Business address." },
+        "onboarded": { "type": "boolean", "description": "Whether the merchant has completed onboarding." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the merchant signed up." }
+      },
+      "required": ["businessName", "ownerName", "phone", "category", "onboarded", "createdAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer of a merchant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "businessName": { "type": "string" },
+        "gstin": { "type": "string" },
+        "address": { "type": "string" },
+        "creditDays": { "type": "number" },
+        "outstandingAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "overdue", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "name", "phone", "creditDays", "outstandingAmount", "status", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product sold by a merchant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "unit": { "type": "string" },
+        "price": { "type": "number" },
+        "gstRate": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "name", "unit", "price", "gstRate", "isActive", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "An order received (often via WhatsApp).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "name": { "type": "string" },
+              "qty": { "type": "number" },
+              "rate": { "type": "number" },
+              "gstRate": { "type": "number" },
+              "amount": { "type": "number" }
+            }
+          }
+        },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "confirmed", "cancelled", "converted_to_invoice"] },
+        "notes": { "type": "string" },
+        "orderDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "customerId", "customerName", "items", "totalAmount", "status", "orderDate", "createdAt"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "A formal invoice generated from an order or estimate.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "estimateId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "sent", "unpaid", "paid", "partial", "overdue"] },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "customerId", "customerName", "invoiceNumber", "totalAmount", "paidAmount", "status", "dueDate", "createdAt"]
+    },
+    "Estimate": {
+      "title": "Estimate",
+      "description": "A quotation or estimate provided to a customer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "estimateNumber": { "type": "string" },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "sent", "accepted", "declined", "converted_to_invoice"] },
+        "validUntil": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "customerId", "customerName", "estimateNumber", "totalAmount", "status", "validUntil", "createdAt"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "A scheduled reminder for a customer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "invoiceId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "type": { "type": "string", "enum": ["payment", "follow_up", "custom"] },
+        "status": { "type": "string", "enum": ["upcoming", "overdue", "sent", "cancelled"] },
+        "scheduledDate": { "type": "string", "format": "date-time" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "customerId", "customerName", "type", "status", "scheduledDate", "message", "createdAt"]
+    },
+    "ReminderHistory": {
+      "title": "ReminderHistory",
+      "description": "A log of a sent reminder.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "reminderId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "type": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "channel": { "type": "string", "enum": ["whatsapp", "sms", "email"] },
+        "status": { "type": "string", "enum": ["delivered", "failed"] }
+      },
+      "required": ["id", "merchantId", "reminderId", "customerId", "customerName", "type", "sentAt", "channel", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment record received from a customer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "invoiceId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string", "enum": ["cash", "upi", "bank_transfer", "cheque", "other"] },
+        "status": { "type": "string", "enum": ["completed", "pending", "failed", "refunded"] },
+        "referenceNumber": { "type": "string" },
+        "notes": { "type": "string" },
+        "paymentDate": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "customerId", "customerName", "amount", "method", "status", "paymentDate", "createdAt"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "A log of an action performed by a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "merchantId": { "type": "string" },
+        "type": { "type": "string", "enum": ["invoice_created", "invoice_updated", "reminder_sent", "payment_marked", "customer_added"] },
+        "description": { "type": "string" },
+        "metadata": { "type": "object" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "merchantId", "type", "description", "userId", "userName", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/merchants/{merchantId}": {
+      "schema": "Merchant",
+      "description": "Merchant profile data."
+    },
+    "/merchants/{merchantId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customers belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/products/{productId}": {
+      "schema": "Product",
+      "description": "Products belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Orders belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Invoices belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/estimates/{estimateId}": {
+      "schema": "Estimate",
+      "description": "Estimates belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/reminders/{reminderId}": {
+      "schema": "Reminder",
+      "description": "Reminders belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/reminderHistory/{historyId}": {
+      "schema": "ReminderHistory",
+      "description": "Reminder history belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payments belonging to a specific merchant."
+    },
+    "/merchants/{merchantId}/activities/{activityId}": {
+      "schema": "Activity",
+      "description": "Activity logs for a specific merchant."
+    }
+  }
+}

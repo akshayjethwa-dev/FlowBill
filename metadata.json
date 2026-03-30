@@ -1,0 +1,5 @@
+{
+  "name": "VyaparFlow",
+  "description": "WhatsApp-native order-to-invoice-to-reminder-to-UPI collection dashboard for Indian micro-SMEs.",
+  "requestFramePermissions": []
+}

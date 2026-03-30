@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /merchants/{merchantId}
+    // Document ID: merchantId (matches Auth UID)
+    // Fields:
+    //   - businessName: string (required)
+    //   - phone: string (required)
+    //   - upiId: string (optional)
+    //   - address: string (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: /merchants/{merchantId}/customers/{customerId}
+    // Fields:
+    //   - merchantId: string (required)
+    //   - name: string (required)
+    //   - phone: string (required)
+    //   - address: string (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: /merchants/{merchantId}/orders/{orderId}
+    // Fields:
+    //   - merchantId: string (required)
+    //   - customerId: string (required)
+    //   - items: list (required)
+    //   - total: number (required)
+    //   - status: string (required)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: /merchants/{merchantId}/invoices/{invoiceId}
+    // Fields:
+    //   - merchantId: string (required)
+    //   - customerId: string (required)
+    //   - invoiceNumber: string (required)
+    //   - total: number (required)
+    //   - status: string (required)
+    //   - dueDate: timestamp (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isMerchantOwner(merchantId) {
+      return isAuthenticated() && request.auth.uid == merchantId;
+    }
+
+    function isValidMerchant(data) {
+      return data.keys().hasAll(['businessName', 'phone', 'createdAt']) &&
+             data.businessName is string && data.businessName.size() > 0 && data.businessName.size() < 100 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['merchantId', 'name', 'phone', 'createdAt']) &&
+             data.merchantId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['merchantId', 'customerId', 'items', 'total', 'status', 'createdAt']) &&
+             data.merchantId == request.auth.uid &&
+             data.items is list && data.items.size() <= 50 &&
+             data.total is number && data.total >= 0 &&
+             data.status in ['pending', 'confirmed', 'invoiced', 'cancelled'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['merchantId', 'customerId', 'invoiceNumber', 'total', 'status', 'createdAt']) &&
+             data.merchantId == request.auth.uid &&
+             data.invoiceNumber is string && data.invoiceNumber.size() > 0 &&
+             data.total is number && data.total >= 0 &&
+             data.status in ['unpaid', 'paid', 'partial', 'overdue'] &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Merchant profiles
+    match /merchants/{merchantId} {
+      allow read: if isMerchantOwner(merchantId);
+      allow create: if isMerchantOwner(merchantId) && isValidMerchant(request.resource.data);
+      allow update: if isMerchantOwner(merchantId) && isValidMerchant(request.resource.data);
+
+      // Customers subcollection
+      match /customers/{customerId} {
+        allow read: if isMerchantOwner(merchantId);
+        allow create: if isMerchantOwner(merchantId) && isValidCustomer(request.resource.data);
+        allow update: if isMerchantOwner(merchantId) && isValidCustomer(request.resource.data);
+        allow delete: if isMerchantOwner(merchantId);
+      }
+
+      // Orders subcollection
+      match /orders/{orderId} {
+        allow read: if isMerchantOwner(merchantId);
+        allow create: if isMerchantOwner(merchantId) && isValidOrder(request.resource.data);
+        allow update: if isMerchantOwner(merchantId) && isValidOrder(request.resource.data);
+        allow delete: if isMerchantOwner(merchantId);
+      }
+
+      // Invoices subcollection
+      match /invoices/{invoiceId} {
+        allow read: if isMerchantOwner(merchantId);
+        allow create: if isMerchantOwner(merchantId) && isValidInvoice(request.resource.data);
+        allow update: if isMerchantOwner(merchantId) && isValidInvoice(request.resource.data);
+        allow delete: if isMerchantOwner(merchantId);
+      }
+
+      // Activities subcollection
+      match /activities/{activityId} {
+        allow read: if isMerchantOwner(merchantId);
+        allow create: if isMerchantOwner(merchantId) && 
+                      request.resource.data.keys().hasAll(['merchantId', 'type', 'description', 'userId', 'userName', 'createdAt']) &&
+                      request.resource.data.merchantId == merchantId &&
+                      request.resource.data.type in ['invoice_created', 'invoice_updated', 'reminder_sent', 'payment_marked', 'customer_added'] &&
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.createdAt == request.time;
+        // Activities are immutable logs
+        allow update, delete: if false;
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

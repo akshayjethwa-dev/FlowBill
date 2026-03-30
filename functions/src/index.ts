@@ -1,9 +1,11 @@
-import * as admin from 'firebase-admin';
+import {onRequest} from "firebase-functions/v2/https";
+import {setGlobalOptions} from "firebase-functions/v2";
+import * as admin from "firebase-admin";
 
-// Initialize the Firebase Admin SDK once globally
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
+admin.initializeApp();
 
-// Export the functions so Firebase can deploy them
-export { setupUserAccount } from './merchants';
+setGlobalOptions({region: "asia-south1"});
+
+export const helloFlowBill = onRequest((req, res) => {
+  res.json({status: "FlowBill functions online"});
+});

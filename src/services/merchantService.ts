@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Merchant } from '../types';
-import { handleFirestoreError, OperationType } from '../lib/firestore-error';
+import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 
 export const merchantService = {
   async getMerchant(uid: string): Promise<Merchant | null> {

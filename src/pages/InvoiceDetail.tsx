@@ -261,7 +261,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
           <div className="space-y-3">
             {actionError && (
               <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-xs">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <AlertCircle className="w-4 h-4 shrink-0" />
                 <p className="font-medium">{actionError}</p>
               </div>
             )}

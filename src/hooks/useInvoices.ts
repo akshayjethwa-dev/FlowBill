@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Invoice } from '../types';
 import { invoiceService } from '../services/invoiceService';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from './useAuth'; // ✅ correct path (not ../context/AuthContext)
+
+// ─── Input type for creating an invoice ──────────────────────────────────────
+
+type CreateInvoiceData = Omit<Invoice, 'id' | 'merchantId' | 'createdAt' | 'updatedAt'>;
+
+// ─── useInvoices — list + mutations ──────────────────────────────────────────
 
 export const useInvoices = () => {
   const { user } = useAuth();
@@ -18,7 +24,7 @@ export const useInvoices = () => {
         setInvoices(data);
         setLoading(false);
       },
-      (err) => {
+      (_err) => {
         setError('Failed to load invoices. Please check your permissions.');
         setLoading(false);
       }
@@ -27,7 +33,7 @@ export const useInvoices = () => {
     return () => unsubscribe();
   }, [user]);
 
-  const createInvoice = async (invoiceData: Omit<Invoice, 'id' | 'merchantId' | 'createdAt'>) => {
+  const createInvoice = async (invoiceData: CreateInvoiceData) => {
     if (!user) return;
     return await invoiceService.createInvoice(user.uid, invoiceData);
   };
@@ -47,16 +53,18 @@ export const useInvoices = () => {
     return await invoiceService.markAsPaid(user.uid, invoiceId, amount);
   };
 
-  return { 
-    invoices, 
-    loading, 
-    error, 
-    createInvoice, 
-    updateInvoice, 
+  return {
+    invoices,
+    loading,
+    error,
+    createInvoice,
+    updateInvoice,
     deleteInvoice,
-    markAsPaid
+    markAsPaid,
   };
 };
+
+// ─── useInvoice — single invoice fetch ───────────────────────────────────────
 
 export const useInvoice = (invoiceId: string | undefined) => {
   const { user } = useAuth();
@@ -65,13 +73,16 @@ export const useInvoice = (invoiceId: string | undefined) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user || !invoiceId) return;
+    if (!user || !invoiceId) {
+      setLoading(false);
+      return;
+    }
 
     const fetchInvoice = async () => {
       try {
         const data = await invoiceService.getInvoice(user.uid, invoiceId);
         setInvoice(data);
-      } catch (err) {
+      } catch (_err) {
         setError('Failed to fetch invoice details.');
       } finally {
         setLoading(false);

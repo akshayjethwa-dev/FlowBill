@@ -162,7 +162,7 @@ export const InvoiceList: React.FC = () => {
                     <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-4 sm:pt-0">
                       <div className="text-right">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Amount</p>
-                        <p className="text-lg font-bold text-gray-900">₹ {invoice.total.toLocaleString('en-IN')}</p>
+                        <p className="text-lg font-bold text-gray-900">₹ {invoice.totalAmount.toLocaleString('en-IN')}</p>
                       </div>
                       <button 
                         className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"

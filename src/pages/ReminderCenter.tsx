@@ -302,7 +302,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ reminder, onSend, onDelete,
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center border flex-shrink-0 ${
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center border shrink-0 ${
             reminder.status === 'overdue' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
           }`}>
             <Bell className="w-6 h-6" />

@@ -1,46 +1,72 @@
-import { useState, useEffect } from 'react';
-import { Customer } from '../types';
-import { customerService } from '../services/customerService';
-import { useAuth } from '../context/AuthContext';
+import { useState, useEffect, useCallback } from "react";
+import { Customer } from "../types";                          // ✅ ONLY source of Customer
+import {
+  listCustomers,
+  createCustomer,
+  updateCustomer,
+  CustomerData,
+} from "../services/customerService";
 
-export const useCustomers = () => {
-  const { user } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// ─── State shape ──────────────────────────────────────────────────────────────
+
+interface UseCustomersState {
+  customers: Customer[];   // ✅ from types/customer.ts
+  loading: boolean;
+  error: string | null;
+}
+
+interface UseCustomersReturn extends UseCustomersState {
+  refetch: () => Promise<void>;
+  addCustomer: (data: CustomerData) => Promise<string>;
+  editCustomer: (id: string, data: Partial<CustomerData>) => Promise<void>;
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+export function useCustomers(merchantId: string | null): UseCustomersReturn {
+  const [state, setState] = useState<UseCustomersState>({
+    customers: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchCustomers = useCallback(async () => {
+    if (!merchantId) {
+      setState({ customers: [], loading: false, error: null });
+      return;
+    }
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const data = await listCustomers(merchantId);
+      setState({ customers: data as Customer[], loading: false, error: null });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load customers";
+      setState((prev) => ({ ...prev, loading: false, error: message }));
+    }
+  }, [merchantId]);
 
   useEffect(() => {
-    if (!user) return;
+    fetchCustomers();
+  }, [fetchCustomers]);
 
-    const unsubscribe = customerService.subscribeToCustomers(
-      user.uid,
-      (data) => {
-        setCustomers(data);
-        setLoading(false);
-      },
-      (err) => {
-        setError('Failed to load customers. Please check your permissions.');
-        setLoading(false);
-      }
-    );
+  const addCustomer = useCallback(
+    async (data: CustomerData): Promise<string> => {
+      if (!merchantId) throw new Error("No merchant authenticated");
+      const newId = await createCustomer(merchantId, data);
+      await fetchCustomers();
+      return newId;
+    },
+    [merchantId, fetchCustomers]
+  );
 
-    return () => unsubscribe();
-  }, [user]);
+  const editCustomer = useCallback(
+    async (id: string, data: Partial<CustomerData>): Promise<void> => {
+      if (!merchantId) throw new Error("No merchant authenticated");
+      await updateCustomer(merchantId, id, data);
+      await fetchCustomers();
+    },
+    [merchantId, fetchCustomers]
+  );
 
-  const addCustomer = async (customerData: Omit<Customer, 'id' | 'merchantId' | 'createdAt'>) => {
-    if (!user) return;
-    return await customerService.addCustomer(user.uid, customerData);
-  };
-
-  const updateCustomer = async (customerId: string, customerData: Partial<Customer>) => {
-    if (!user) return;
-    return await customerService.updateCustomer(user.uid, customerId, customerData);
-  };
-
-  const deleteCustomer = async (customerId: string) => {
-    if (!user) return;
-    return await customerService.deleteCustomer(user.uid, customerId);
-  };
-
-  return { customers, loading, error, addCustomer, updateCustomer, deleteCustomer };
-};
+  return { ...state, refetch: fetchCustomers, addCustomer, editCustomer };
+}

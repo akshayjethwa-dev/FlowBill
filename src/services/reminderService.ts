@@ -16,7 +16,7 @@ import { Reminder, ReminderHistory } from '../types';
 import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 import { activityService } from './activityService';
 
-const REMINDERS_COLLECTION = 'reminders';
+const REMINDERS_COLLECTION = 'reminderJobs';
 const HISTORY_COLLECTION = 'reminderHistory';
 
 export const reminderService = {

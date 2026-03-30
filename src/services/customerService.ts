@@ -1,101 +1,42 @@
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot,
-  Timestamp,
-  serverTimestamp
-} from 'firebase/firestore';
-import { db } from '../firebase';
-import { Customer } from '../types';
-import { handleFirestoreError, OperationType } from '../utils/firestore-error';
-import { activityService } from './activityService';
+import {
+  collection, addDoc, updateDoc, doc,
+  query, orderBy, getDocs, serverTimestamp,
+} from "firebase/firestore";
+import { db } from "../firebase";
+import { Customer } from "../types";  // ✅ single source of truth
 
-const COLLECTION_NAME = 'customers';
+// Input type — only the fields a user fills in
+export type CustomerData = Omit<
+  Customer,
+  "id" | "merchantId" | "createdAt" | "updatedAt"
+>;
 
-export const customerService = {
-  getCustomersPath: (merchantId: string) => `merchants/${merchantId}/${COLLECTION_NAME}`,
+const customersPath = (merchantId: string) =>
+  `merchants/${merchantId}/customers`;
 
-  subscribeToCustomers: (
-    merchantId: string, 
-    callback: (customers: Customer[]) => void,
-    onError: (error: any) => void
-  ) => {
-    const path = customerService.getCustomersPath(merchantId);
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+export async function listCustomers(merchantId: string): Promise<Customer[]> {
+  const ref = collection(db, customersPath(merchantId));
+  const q = query(ref, orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Customer, "id">) }));
+}
 
-    return onSnapshot(q, (snapshot) => {
-      const customers = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Customer[];
-      callback(customers);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      onError(error);
-    });
-  },
+export async function createCustomer(merchantId: string, data: CustomerData): Promise<string> {
+  const ref = collection(db, customersPath(merchantId));
+  const docRef = await addDoc(ref, {
+    ...data,
+    merchantId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
 
-  addCustomer: async (merchantId: string, customerData: Omit<Customer, 'id' | 'merchantId' | 'createdAt'>) => {
-    const path = customerService.getCustomersPath(merchantId);
-    const customerRef = doc(collection(db, path));
-    const newCustomer: Customer = {
-      ...customerData,
-      id: customerRef.id,
-      merchantId,
-      createdAt: serverTimestamp(),
-    };
-
-    try {
-      await setDoc(customerRef, newCustomer);
-      
-      // Log activity
-      await activityService.logActivity(
-        merchantId,
-        "customer_added",
-        `Added new customer: ${newCustomer.name}`,
-        {
-          customerId: newCustomer.id,
-          customerName: newCustomer.name,
-          phone: newCustomer.phone
-        }
-      );
-      
-      return newCustomer;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-      throw error;
-    }
-  },
-
-  updateCustomer: async (merchantId: string, customerId: string, customerData: Partial<Customer>) => {
-    const path = customerService.getCustomersPath(merchantId);
-    const customerRef = doc(db, path, customerId);
-
-    try {
-      await updateDoc(customerRef, customerData);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
-      throw error;
-    }
-  },
-
-  deleteCustomer: async (merchantId: string, customerId: string) => {
-    const path = customerService.getCustomersPath(merchantId);
-    const customerRef = doc(db, path, customerId);
-
-    try {
-      await deleteDoc(customerRef);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
-      throw error;
-    }
-  }
-};
+export async function updateCustomer(
+  merchantId: string,
+  customerId: string,
+  data: Partial<CustomerData>
+): Promise<void> {
+  const ref = doc(db, customersPath(merchantId), customerId);
+  await updateDoc(ref, { ...data, updatedAt: serverTimestamp() });
+}

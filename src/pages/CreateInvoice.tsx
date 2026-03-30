@@ -3,6 +3,8 @@ import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useInvoices } from '../hooks/useInvoices';
 import { useCustomers } from '../hooks/useCustomers';
 import { useProducts } from '../hooks/useProducts';
+import { useAuth } from '../hooks/useAuth';  
+import { Customer } from '../types';
 import { 
   ArrowLeft, 
   Search, 
@@ -17,12 +19,14 @@ import {
   Loader2,
   CheckCircle2
 } from 'lucide-react';
-import { OrderItem, Customer, Product } from '../types';
+import { OrderItem, Product } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const CreateInvoice: React.FC = () => {
-  const { createInvoice } = useInvoices();
-  const { customers } = useCustomers();
+  const { user } = useAuth();
+  const merchantId = user?.uid ?? null;
+  const { createInvoice } = useInvoices();    
+  const { customers } = useCustomers(merchantId);      
   const { products } = useProducts();
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -309,7 +313,7 @@ export const CreateInvoice: React.FC = () => {
                         >
                           -
                         </button>
-                        <span className="px-3 py-1 font-bold text-gray-900 text-sm border-x border-gray-100 min-w-[40px] text-center">
+                        <span className="px-3 py-1 font-bold text-gray-900 text-sm border-x border-gray-100 min-w-10 text-center">
                           {item.qty}
                         </span>
                         <button 
@@ -319,7 +323,7 @@ export const CreateInvoice: React.FC = () => {
                           +
                         </button>
                       </div>
-                      <div className="text-right min-w-[80px]">
+                      <div className="text-right min-w-20">
                         <p className="font-bold text-indigo-600 text-sm">₹{item.amount.toLocaleString('en-IN')}</p>
                       </div>
                       <button 
@@ -342,7 +346,7 @@ export const CreateInvoice: React.FC = () => {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add terms, bank details, or special instructions..."
-              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px] text-sm"
+              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-30 text-sm"
             />
           </div>
         </div>
@@ -406,7 +410,7 @@ export const CreateInvoice: React.FC = () => {
 
           {(!selectedCustomer || items.length === 0) && (
             <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl flex items-start gap-3 text-orange-700 text-xs">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <p className="font-medium">Please select a customer and add at least one item to generate an invoice.</p>
             </div>
           )}

@@ -199,7 +199,7 @@ export const CreateOrder: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-sm"
             >
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <AlertCircle className="w-5 h-5 shrink-0" />
               <p className="font-medium">{error}</p>
             </motion.div>
           )}

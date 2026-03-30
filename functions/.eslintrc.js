@@ -18,8 +18,7 @@ module.exports = {
     sourceType: "module",
   },
   ignorePatterns: [
-    "/lib/**/*", // Ignore built files.
-    "/generated/**/*", // Ignore generated files.
+    "/lib/**/*",
   ],
   plugins: [
     "@typescript-eslint",
@@ -28,6 +27,10 @@ module.exports = {
   rules: {
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
-    "indent": ["error", 2],
+    "linebreak-style": 0,              // ✅ disables CRLF/LF error (Windows fix)
+    "object-curly-spacing": ["error", "never"],
+    "eol-last": ["error", "always"],
+    "no-trailing-spaces": "error",
+    "comma-dangle": ["error", "always-multiline"],
   },
 };

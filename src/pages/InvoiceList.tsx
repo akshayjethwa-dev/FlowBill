@@ -136,7 +136,7 @@ export const InvoiceList: React.FC = () => {
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 border border-indigo-100 flex-shrink-0">
+                      <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 border border-indigo-100 shrink-0">
                         <Receipt className="w-6 h-6" />
                       </div>
                       <div>
@@ -162,7 +162,7 @@ export const InvoiceList: React.FC = () => {
                     <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-4 sm:pt-0">
                       <div className="text-right">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Amount</p>
-                        <p className="text-lg font-bold text-gray-900">₹ {invoice.totalAmount.toLocaleString('en-IN')}</p>
+                        <p className="text-lg font-bold text-gray-900">₹ {invoice.total.toLocaleString('en-IN')}</p>
                       </div>
                       <button 
                         className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"

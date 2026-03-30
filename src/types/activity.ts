@@ -1,26 +1,8 @@
-import { Timestamp } from "firebase/firestore";
-
-export type ActivityType = 
-  | "invoice_created" 
-  | "invoice_updated" 
-  | "reminder_sent" 
-  | "payment_marked" 
-  | "customer_added";
-
-export interface Activity {
+export interface ActivityItem {
   id: string;
-  merchantId: string;
-  type: ActivityType;
-  description: string;
-  metadata: {
-    customerId?: string;
-    customerName?: string;
-    invoiceId?: string;
-    invoiceNumber?: string;
-    amount?: number;
-    [key: string]: any;
-  };
-  userId: string; // The user who performed the action
-  userName: string;
-  createdAt: Timestamp;
+  type: 'order' | 'invoice' | 'payment' | 'customer' | 'reminder';
+  title: string;
+  subtitle: string;
+  timestamp: any;
+  status?: string;
 }

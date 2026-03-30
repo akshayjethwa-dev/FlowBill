@@ -1,3 +1,9 @@
+/// <reference types="vite/client" />
+import { initializeApp } from 'firebase/app';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'; // <-- Add this
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -6,3 +12,14 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGINGSENDER_ID,
 };
+
+export const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const functions = getFunctions(app); // <-- Add this
+
+if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true') {
+  connectFirestoreEmulator(db, 'localhost', 8080);
+  connectAuthEmulator(auth, 'http://localhost:9099');
+  connectFunctionsEmulator(functions, 'localhost', 5001); // <-- Add this
+}

@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Smartphone, Mail, ArrowRight } from 'lucide-react';
 import { BRAND_NAME } from '../../constants';
 
 export const LoginPage: React.FC = () => {
-  const { loginWithGoogle, loading } = useAuth();
-  const [isEmailMode, setIsEmailMode] = React.useState(false);
+  const { loginWithGoogle, loginWithEmail, loading } = useAuth();
+  const [isEmailMode, setIsEmailMode] = useState(true); // Default to true as per MVP
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (loading) {
     return (
@@ -14,6 +18,19 @@ export const LoginPage: React.FC = () => {
       </div>
     );
   }
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+    try {
+      await loginWithEmail(email, password);
+    } catch (err: any) {
+      setError(err.message || 'Failed to login');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
@@ -80,26 +97,45 @@ export const LoginPage: React.FC = () => {
               </div>
             </div>
 
+            {error && <div className="text-red-500 text-sm text-center mb-4">{error}</div>}
+
             {isEmailMode ? (
-              <div className="space-y-4">
+              <form onSubmit={handleEmailLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                   <input 
                     type="email" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
                     placeholder="name@business.com"
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                   />
                 </div>
-                <button className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
-                  Send Magic Link <ArrowRight className="w-4 h-4" />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <input 
+                    type="password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
+                <button disabled={isSubmitting} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-70">
+                  {isSubmitting ? 'Signing in...' : 'Sign In'} <ArrowRight className="w-4 h-4" />
                 </button>
+                {/* MVP Phone login disabled 
                 <button 
+                  type="button"
                   onClick={() => setIsEmailMode(false)}
                   className="w-full text-sm text-gray-500 hover:text-indigo-600 transition-colors"
                 >
                   Use Phone Number instead
                 </button>
-              </div>
+                */}
+              </form>
             ) : (
               <div className="space-y-4">
                 <div>

@@ -9,15 +9,12 @@ import {
   limit, 
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
-import { ActivityItem } from "../types/activity";  // ✅ correct export name
+import { ActivityItem } from "../types/activity";
 
-// SEC-01: canonical path -> /merchants/{merchantId}/activityLogs/{logId}
 const COLLECTION_NAME = "activityLogs";
 
-// Derive ActivityType from the existing ActivityItem interface
 type ActivityType = ActivityItem["type"];
 
-// Extended type that includes Firestore metadata not in ActivityItem
 type ActivityLog = ActivityItem & {
   merchantId: string;
   description: string;
@@ -25,6 +22,7 @@ type ActivityLog = ActivityItem & {
   userId: string;
   userName: string;
   createdAt: any;
+  isArchived?: boolean; // ✅ Add typed support
 };
 
 export const activityService = {
@@ -54,10 +52,10 @@ export const activityService = {
         userId: user.uid,
         userName: user.displayName || "Unknown User",
         createdAt: serverTimestamp(),
+        isArchived: false, // ✅ Default to active
       });
     } catch (error) {
       console.error("Error logging activity:", error);
-      // Don't crash the app if logging fails
     }
   },
 
@@ -73,7 +71,13 @@ export const activityService = {
         db,
         activityService.getActivityLogsPath(merchantId)
       );
-      let q = query(activitiesRef, orderBy("createdAt", "desc"));
+      
+      // ✅ Base query ignores archived logs
+      let q = query(
+        activitiesRef, 
+        where("isArchived", "==", false),
+        orderBy("createdAt", "desc")
+      );
 
       if (filters.type) {
         q = query(q, where("type", "==", filters.type));

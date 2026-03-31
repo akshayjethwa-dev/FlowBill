@@ -3,14 +3,15 @@ import {
   doc, 
   setDoc, 
   updateDoc, 
-  deleteDoc, 
   query, 
+  where, 
   orderBy, 
   onSnapshot,
   serverTimestamp,
   getDoc
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { httpsCallable } from 'firebase/functions'; // ✅ Required for calling backend
+import { db, functions } from '../firebase';        // ✅ Import functions instance
 import { Order } from '../types';
 import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 import { activityService } from './activityService';
@@ -26,7 +27,13 @@ export const orderService = {
     onError: (error: any) => void
   ) => {
     const path = orderService.getOrdersPath(merchantId);
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+    
+    // ✅ Filter out archived orders automatically
+    const q = query(
+      collection(db, path), 
+      where('isArchived', '==', false),
+      orderBy('createdAt', 'desc')
+    );
 
     return onSnapshot(q, (snapshot) => {
       const orders = snapshot.docs.map(doc => ({
@@ -44,7 +51,6 @@ export const orderService = {
     const path = orderService.getOrdersPath(merchantId);
     const orderRef = doc(collection(db, path));
     
-    // Generate Order Number if not provided
     const orderNumber = orderData.orderNumber || `ORD-${Date.now().toString().slice(-6)}`;
     
     const newOrder: Order = {
@@ -53,12 +59,12 @@ export const orderService = {
       id: orderRef.id,
       merchantId,
       createdAt: serverTimestamp() as any,
+      isArchived: false, // ✅ Set default to false
     };
 
     try {
       await setDoc(orderRef, newOrder);
       
-      // Log activity
       await activityService.logActivity(
         merchantId,
         "order_created",
@@ -89,7 +95,6 @@ export const orderService = {
         updatedAt: serverTimestamp()
       });
       
-      // Log status updates if applicable
       if (orderData.status) {
         const docSnap = await getDoc(orderRef);
         if (docSnap.exists()) {
@@ -112,14 +117,38 @@ export const orderService = {
     }
   },
 
+  // ✅ Soft delete instead of hard delete
   deleteOrder: async (merchantId: string, orderId: string) => {
     const path = orderService.getOrdersPath(merchantId);
     const orderRef = doc(db, path, orderId);
 
     try {
-      await deleteDoc(orderRef);
+      await updateDoc(orderRef, {
+        isArchived: true,
+        updatedAt: serverTimestamp()
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
+      throw error;
+    }
+  },
+
+  // ✅ ADDED: Secure Backend Conversion for Orders -> Estimates
+  convertToEstimate: async (merchantId: string, orderId: string): Promise<string> => {
+    try {
+      const convertFn = httpsCallable(functions, 'convertOrderToEstimate');
+      const response = await convertFn({ sourceId: orderId });
+      
+      const data = response.data as { estimateId: string; message?: string };
+      
+      if (data.message === 'Already converted') {
+        console.warn('Idempotency caught: Order was already converted.');
+      }
+      
+      return data.estimateId;
+    } catch (error) {
+      console.error("Failed to convert order via backend:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `merchants/${merchantId}/orders`);
       throw error;
     }
   }

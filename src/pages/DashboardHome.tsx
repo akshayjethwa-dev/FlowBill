@@ -45,18 +45,24 @@ export const DashboardHome: React.FC = () => {
       />
 
       <div className="space-y-6">
-        {/* Render two separate StatWidget components in a grid */}
-        {data && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Render StatWidget components matching the new Denormalized Stats */}
+        {data && data.stats && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatWidget 
-              title="Due Today"
-              count={data.dueToday.count}
+              title="Total Invoiced"
+              count={data.stats.totalInvoiced || 0}
               type="due"
               onAction={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
             />
             <StatWidget 
-              title="Overdue"
-              count={data.overdue.count}
+              title="Total Collected"
+              count={data.stats.totalCollected || 0}
+              type="due"
+              onAction={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
+            />
+            <StatWidget 
+              title="Total Outstanding"
+              count={data.stats.totalOutstanding || 0}
               type="overdue"
               onAction={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
             />

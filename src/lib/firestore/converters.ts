@@ -71,7 +71,12 @@ export function makeConverter<T extends FirestoreDoc>(): FirestoreDataConverter<
       options?: SnapshotOptions
     ): T {
       const data = snapshot.data(options);
-      return { ...data, id: snapshot.id } as T;
+      return { 
+        ...data, 
+        id: snapshot.id,
+        createdAt: tsToIso(data.createdAt),
+        updatedAt: tsToIso(data.updatedAt)
+      } as unknown as T;
     },
   };
 }
@@ -88,7 +93,15 @@ export const invoiceConverter: FirestoreDataConverter<Invoice> = {
     };
   },
   fromFirestore(snap: QueryDocumentSnapshot): Invoice {
-    return { ...snap.data(), id: snap.id } as Invoice;
+    const data = snap.data();
+    return { 
+      ...data, 
+      id: snap.id,
+      // Normalize Timestamps to ISO Strings for the frontend
+      createdAt: tsToIso(data.createdAt),
+      updatedAt: tsToIso(data.updatedAt),
+      dueDate: tsToIso(data.dueDate) 
+    } as unknown as Invoice;
   },
 };
 
@@ -100,7 +113,13 @@ export const customerConverter: FirestoreDataConverter<Customer> = {
     };
   },
   fromFirestore(snap: QueryDocumentSnapshot): Customer {
-    return { ...snap.data(), id: snap.id } as Customer;
+    const data = snap.data();
+    return { 
+      ...data, 
+      id: snap.id,
+      createdAt: tsToIso(data.createdAt),
+      updatedAt: tsToIso(data.updatedAt)
+    } as unknown as Customer;
   },
 };
 
@@ -112,7 +131,14 @@ export const orderConverter: FirestoreDataConverter<Order> = {
     };
   },
   fromFirestore(snap: QueryDocumentSnapshot): Order {
-    return { ...snap.data(), id: snap.id } as Order;
+    const data = snap.data();
+    return { 
+      ...data, 
+      id: snap.id,
+      createdAt: tsToIso(data.createdAt),
+      updatedAt: tsToIso(data.updatedAt),
+      dueDate: tsToIso(data.dueDate)
+    } as unknown as Order;
   },
 };
 
@@ -124,7 +150,14 @@ export const estimateConverter: FirestoreDataConverter<Estimate> = {
     };
   },
   fromFirestore(snap: QueryDocumentSnapshot): Estimate {
-    return { ...snap.data(), id: snap.id } as Estimate;
+    const data = snap.data();
+    return { 
+      ...data, 
+      id: snap.id,
+      createdAt: tsToIso(data.createdAt),
+      updatedAt: tsToIso(data.updatedAt),
+      dueDate: tsToIso(data.dueDate) // Often used interchangeably as expiry date
+    } as unknown as Estimate;
   },
 };
 

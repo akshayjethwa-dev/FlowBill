@@ -1,4 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import { z } from "zod";
 
@@ -102,4 +103,47 @@ export const createInvoice = onCall(async (request) => {
     
     throw new HttpsError('internal', 'Failed to create invoice via transaction');
   }
+});
+
+// ============================================================================
+// STEP 6: DENORMALIZED STATS TRIGGER
+// ============================================================================
+export const onInvoiceWrite = onDocumentWritten("merchants/{merchantId}/invoices/{invoiceId}", async (event) => {
+  const merchantId = event.params.merchantId;
+  
+  // Get data before and after the change (handles create, update, and delete)
+  const before = event.data?.before.exists ? event.data?.before.data() : null;
+  const after = event.data?.after.exists ? event.data?.after.data() : null;
+
+  // We need the customer ID to update their specific outstanding balance
+  const customerId = after?.customerId || before?.customerId;
+  if (!customerId) return;
+
+  // Calculate the difference in amounts
+  const amountDiff = (after?.totalAmount || 0) - (before?.totalAmount || 0);
+  const paidDiff = (after?.paidAmount || 0) - (before?.paidAmount || 0);
+
+  // If no financial change happened (e.g., just updating notes), exit early to save writes
+  if (amountDiff === 0 && paidDiff === 0) return;
+
+  const statsRef = db.doc(`merchants/${merchantId}/stats/dashboard`);
+  const customerRef = db.doc(`merchants/${merchantId}/customers/${customerId}`);
+
+  const batch = db.batch();
+
+  // 1. Update Global Dashboard Stats
+  batch.set(statsRef, {
+    totalInvoiced: admin.firestore.FieldValue.increment(amountDiff),
+    totalCollected: admin.firestore.FieldValue.increment(paidDiff),
+    totalOutstanding: admin.firestore.FieldValue.increment(amountDiff - paidDiff),
+    lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  // 2. Update Customer's Specific Outstanding Balance
+  batch.set(customerRef, {
+    outstandingAmount: admin.firestore.FieldValue.increment(amountDiff - paidDiff),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+
+  await batch.commit();
 });

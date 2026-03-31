@@ -8,10 +8,10 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '../firebase'; 
-import { Merchant, UserProfile } from '../types'; 
+import { Merchant, UserProfile } from '../types/user'; 
 
 interface AuthContextType {
   user: User | null;
@@ -33,61 +33,66 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let profileUnsub: () => void;
+    let merchantUnsub: () => void;
+
+    const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // ✅ FIX: Set the user IMMEDIATELY so the UI navigates away from the Login screen!
         setUser(firebaseUser);
 
         try {
-          // Check if custom claims exist on the current token
-          const idTokenResult = await firebaseUser.getIdTokenResult();
-          
-          if (!idTokenResult.claims.merchantId) {
-            // It's a new user. We can attempt to call the backend function to set up DB docs,
-            // but we wrap it in a try/catch so it doesn't break the UI if functions aren't deployed.
-            try {
-              const setupUserAccount = httpsCallable(functions, 'setupUserAccount');
-              await setupUserAccount();
-              await firebaseUser.getIdToken(true); // Refresh token in background
-            } catch (functionError) {
-              console.warn("Backend setup function pending/failed, relying on frontend onboarding.", functionError);
-            }
-          }
-
-          // Fetch User Profile
+          // 8. Session Refresh: Listen to user membership doc in real-time
+          // This immediately catches if an admin suspends this user while they are logged in.
           const userRef = doc(db, 'users', firebaseUser.uid);
-          const userSnap = await getDoc(userRef);
           
-          if (userSnap.exists()) {
-            const userData = { id: userSnap.id, ...userSnap.data() } as UserProfile;
-            setUserProfile(userData);
+          profileUnsub = onSnapshot(userRef, async (userSnap) => {
+            if (userSnap.exists()) {
+              const userData = { id: userSnap.id, ...userSnap.data() } as UserProfile;
+              setUserProfile(userData);
 
-            // Fetch linked Merchant Profile
-            const merchantRef = doc(db, 'merchants', userData.merchantId);
-            const merchantSnap = await getDoc(merchantRef);
-            
-            if (merchantSnap.exists()) {
-              setMerchantProfile({ id: merchantSnap.id, ...merchantSnap.data() } as Merchant);
+              // Now listen to the linked Merchant document
+              const merchantRef = doc(db, 'merchants', userData.merchantId);
+              merchantUnsub = onSnapshot(merchantRef, (merchantSnap) => {
+                if (merchantSnap.exists()) {
+                  setMerchantProfile({ id: merchantSnap.id, ...merchantSnap.data() } as Merchant);
+                }
+                setLoading(false);
+              });
             } else {
-              setMerchantProfile(null);
+              // Trigger backend setup if the profile doc doesn't exist yet
+              try {
+                const setupUserAccount = httpsCallable(functions, 'setupUserAccount');
+                await setupUserAccount();
+                await firebaseUser.getIdToken(true); 
+              } catch (err) {
+                console.warn("Backend setup function pending/failed.");
+                setLoading(false);
+              }
             }
-          } else {
-            setUserProfile(null);
-            setMerchantProfile(null);
-          }
+          });
+
         } catch (error) {
           console.error("Error fetching profiles", error);
+          setLoading(false);
         }
       } else {
         setUser(null);
         setUserProfile(null);
         setMerchantProfile(null);
+        setLoading(false);
+        if (profileUnsub) profileUnsub();
+        if (merchantUnsub) merchantUnsub();
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      authUnsub();
+      if (profileUnsub) profileUnsub();
+      if (merchantUnsub) merchantUnsub();
+    };
   }, []);
+
+  // ... (keep loginWithGoogle, loginWithEmail, registerWithEmail, logout implementations exactly as they were)
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();

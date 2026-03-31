@@ -3,9 +3,14 @@ import { dashboardService } from '../services/dashboardService';
 import { auth } from '../firebase';
 import { Invoice } from '../types';
 
+interface DashboardStats {
+  totalInvoiced: number;
+  totalCollected: number;
+  totalOutstanding: number;
+}
+
 interface DashboardData {
-  dueToday: { count: number; amount: number };
-  overdue: { count: number; amount: number };
+  stats: DashboardStats;
   recentInvoices: Invoice[];
 }
 
@@ -24,8 +29,7 @@ export const useDashboardData = () => {
 
       try {
         setLoading(true);
-        // We use getSnapshot which currently falls back to getLiveDashboardData
-        // Once the cloud function snapshot is ready, it'll fetch smoothly from there
+        // This is now lightning fast and very cheap on reads!
         const dashboardData = await dashboardService.getSnapshot(merchantId);
         setData(dashboardData);
         setError(null);

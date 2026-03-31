@@ -5,10 +5,7 @@ import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { PageContainer, PageHeader } from './components/layout/PageContainer';
-import { DashboardSkeleton } from './components/ui/Skeleton';
 import { OnboardingFlow } from './components/onboarding/OnboardingFlow';
-import { merchantService } from './services/merchantService';
-import { Merchant } from './types';
 
 import { DashboardHome } from './pages/DashboardHome';
 // FIXED: Removed curly braces for default import
@@ -30,21 +27,9 @@ import { SettingsPage } from './pages/SettingsPage';
 import { BillingPage } from './pages/BillingPage';
 
 function AppContent() {
-  const { user, logout } = useAuth();
+  // ✅ Utilize the updated context which provides real-time profiles
+  const { merchantProfile, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isLoading, setIsLoading] = useState(true);
-  const [merchant, setMerchant] = useState<Merchant | null>(null);
-
-  useEffect(() => {
-    async function checkOnboarding() {
-      if (user) {
-        const profile = await merchantService.getMerchant(user.uid);
-        setMerchant(profile);
-      }
-      setIsLoading(false);
-    }
-    checkOnboarding();
-  }, [user]);
 
   // Handle custom navigation events
   useEffect(() => {
@@ -55,12 +40,11 @@ function AppContent() {
     return () => window.removeEventListener('navigate', handleNavigateEvent);
   }, []);
 
-  // Mock navigation handler
   const handleNavigate = (id: string) => {
     setActiveTab(id);
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
@@ -71,7 +55,8 @@ function AppContent() {
     );
   }
 
-  if (!merchant || !merchant.onboarded) {
+  // ✅ New nested onboarding check (Step 4 of Authentication phase)
+  if (merchantProfile && !merchantProfile.onboarding?.completed) {
     return <OnboardingFlow onComplete={() => window.location.reload()} />;
   }
 
@@ -87,6 +72,7 @@ function AppContent() {
       return <InvoiceDetail invoiceId={invoiceId} />;
     }
 
+    // ✅ Enforcing RBAC locally on specific route rendering
     switch (activeTab) {
       case 'dashboard':
         return <DashboardHome />;
@@ -94,31 +80,67 @@ function AppContent() {
         return <CustomerList />;
       case 'inventory':
       case 'products':
-        return <ProductList />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin', 'staff']}>
+            <ProductList />
+          </ProtectedRoute>
+        );
       case 'orders':
         return <OrderList />;
       case 'create-order':
-        return <CreateOrder />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin', 'staff']}>
+            <CreateOrder />
+          </ProtectedRoute>
+        );
       case 'estimates':
         return <EstimateList />;
       case 'invoices':
         return <InvoiceList />;
       case 'create-invoice':
-        return <CreateInvoice />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin', 'staff']}>
+            <CreateInvoice />
+          </ProtectedRoute>
+        );
       case 'reminders':
-        return <ReminderCenter />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin', 'accountant']}>
+            <ReminderCenter />
+          </ProtectedRoute>
+        );
       case 'reminder-history':
-        return <ReminderHistoryLog />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin', 'accountant']}>
+            <ReminderHistoryLog />
+          </ProtectedRoute>
+        );
       case 'payments':
         return <PaymentList />;
       case 'ledger':
-        return <LedgerPage />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin', 'accountant']}>
+            <LedgerPage />
+          </ProtectedRoute>
+        );
       case 'activity-log':
-        return <ActivityLog />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin']}>
+            <ActivityLog />
+          </ProtectedRoute>
+        );
       case 'settings':
-        return <SettingsPage />;
+        return (
+          <ProtectedRoute allowedRoles={['owner', 'admin']}>
+            <SettingsPage />
+          </ProtectedRoute>
+        );
       case 'billing':
-        return <BillingPage />;
+        return (
+          <ProtectedRoute allowedRoles={['owner']}>
+            <BillingPage />
+          </ProtectedRoute>
+        );
       default:
         return (
           <PageContainer>
@@ -146,7 +168,8 @@ export default function App() {
     <ErrorBoundary>
       <ToastProvider>
         <AuthProvider>
-          <ProtectedRoute>
+          {/* We turn off requireOnboarding here because AppContent handles the OnboardingFlow rendering locally */}
+          <ProtectedRoute requireOnboarding={false}>
             <AppContent />
           </ProtectedRoute>
         </AuthProvider>

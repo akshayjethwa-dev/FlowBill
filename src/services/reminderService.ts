@@ -8,7 +8,6 @@ import {
   orderBy, 
   onSnapshot,
   serverTimestamp,
-  getDoc,
   addDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -17,7 +16,7 @@ import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 import { activityService } from './activityService';
 
 const REMINDERS_COLLECTION = 'reminderJobs';
-const HISTORY_COLLECTION = 'reminderHistory';
+const HISTORY_COLLECTION = 'whatsappMessages';
 
 export const reminderService = {
   getRemindersPath: (merchantId: string) => `merchants/${merchantId}/${REMINDERS_COLLECTION}`,
@@ -29,7 +28,8 @@ export const reminderService = {
     onError: (error: any) => void
   ) => {
     const path = reminderService.getRemindersPath(merchantId);
-    const q = query(collection(db, path), orderBy('scheduledDate', 'asc'));
+    // Ordered by scheduledAt based on requirements
+    const q = query(collection(db, path), orderBy('scheduledAt', 'asc'));
 
     return onSnapshot(q, (snapshot) => {
       const reminders = snapshot.docs.map(doc => ({
@@ -87,8 +87,6 @@ export const reminderService = {
   },
 
   sendReminder: async (merchantId: string, reminder: Reminder, channel: 'whatsapp' | 'sms' | 'email' = 'whatsapp') => {
-    // In a real app, this would call a backend function or a 3rd party API
-    // For now, we simulate the send and log it in history
     const historyPath = reminderService.getHistoryPath(merchantId);
     
     try {
@@ -98,9 +96,10 @@ export const reminderService = {
         customerId: reminder.customerId,
         customerName: reminder.customerName,
         type: reminder.type,
+        createdAt: serverTimestamp(),
         sentAt: serverTimestamp(),
         channel,
-        status: 'delivered'
+        status: 'sent'
       };
 
       await addDoc(collection(db, historyPath), historyEntry);
@@ -135,7 +134,8 @@ export const reminderService = {
     onError: (error: any) => void
   ) => {
     const path = reminderService.getHistoryPath(merchantId);
-    const q = query(collection(db, path), orderBy('sentAt', 'desc'));
+    // Ordered by createdAt (or sentAt)
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
 
     return onSnapshot(q, (snapshot) => {
       const history = snapshot.docs.map(doc => ({

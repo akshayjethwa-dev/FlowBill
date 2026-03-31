@@ -12,3 +12,6 @@ export const helloFlowBill = onRequest((req, res) => {
 
 // ✅ Export the new invoice functions
 export * from "./invoices";
+export * from "./payments";
+export * from "./whatsapp";    // ✅ Export WhatsApp tools
+export * from "./reminders";

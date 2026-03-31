@@ -77,8 +77,9 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       });
       
       onClose();
-    } catch (err) {
-      setError('Failed to record payment. Please try again.');
+    } catch (err: any) {
+      // ✅ Now surface the actual rejection reason from the Cloud Function
+      setError(err?.message || 'Failed to record payment. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -87,7 +88,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 sm:p-6">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -117,7 +118,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
             <form onSubmit={handleSubmit} className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
               {error && (
                 <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-xs">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   <p className="font-medium">{error}</p>
                 </div>
               )}

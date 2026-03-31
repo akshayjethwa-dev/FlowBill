@@ -1,15 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot, 
-  where, 
-  limit, 
-  Timestamp 
-} from "firebase/firestore";
-import { db, auth } from "../firebase";
-import { Activity, ActivityType } from "../types/activity";
+import { activityLogService } from "../services/activityLogService";
+import { ActivityItem, ActivityType, ActivityLog } from "../types/activity";
 
 interface UseActivitiesProps {
   merchantId?: string;
@@ -24,7 +15,7 @@ export const useActivities = ({
   searchQuery = "", 
   limitCount = 50 
 }: UseActivitiesProps) => {
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,33 +28,41 @@ export const useActivities = ({
     setLoading(true);
     setError(null);
 
-    const activitiesRef = collection(db, "merchants", merchantId, "activities");
-    
-    let q = query(
-      activitiesRef, 
-      orderBy("createdAt", "desc"), 
-      limit(limitCount)
-    );
+    const unsubscribe = activityLogService.subscribeToLogs(
+      merchantId,
+      (logs: ActivityLog[]) => {
+        const mappedData: ActivityItem[] = logs.map(log => {
+          // Construct the linked entity string (e.g., "Invoice #INV-001 (Acme Corp)")
+          let linkedEntity = "";
+          if (log.metadata?.invoiceNumber) linkedEntity += `Invoice #${log.metadata.invoiceNumber} `;
+          if (log.metadata?.customerName) linkedEntity += `(${log.metadata.customerName})`;
+          
+          const subtitleParts = [];
+          if (log.userName) subtitleParts.push(`By ${log.userName}`);
+          if (linkedEntity) subtitleParts.push(linkedEntity.trim());
 
-    if (type) {
-      q = query(q, where("type", "==", type));
-    }
-
-    const unsubscribe = onSnapshot(
-      q, 
-      (snapshot) => {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Activity[];
+          return {
+            id: log.id,
+            type: log.type,
+            title: log.description || log.type.replace('_', ' ').toUpperCase(),
+            subtitle: subtitleParts.join(' • ') || "System Action",
+            timestamp: log.createdAt,
+            description: log.description,
+            userName: log.userName,
+            metadata: log.metadata || {}
+          };
+        });
         
-        setActivities(data);
+        setActivities(mappedData);
         setLoading(false);
       },
-      (err) => {
-        console.error("Error listening to activities:", err);
-        setError("Failed to load activities. Please check your permissions.");
-        setLoading(false);
+      {
+        type,
+        limitCount,
+        onError: () => {
+          setError("Failed to load activities. Please check your permissions.");
+          setLoading(false);
+        }
       }
     );
 
@@ -76,10 +75,10 @@ export const useActivities = ({
     
     const lowerQuery = searchQuery.toLowerCase();
     return activities.filter(activity => 
-      activity.description.toLowerCase().includes(lowerQuery) ||
-      activity.userName.toLowerCase().includes(lowerQuery) ||
-      activity.metadata.customerName?.toLowerCase().includes(lowerQuery) ||
-      activity.metadata.invoiceNumber?.toLowerCase().includes(lowerQuery)
+      activity.title.toLowerCase().includes(lowerQuery) ||
+      activity.userName?.toLowerCase().includes(lowerQuery) ||
+      activity.metadata?.customerName?.toLowerCase().includes(lowerQuery) ||
+      activity.metadata?.invoiceNumber?.toLowerCase().includes(lowerQuery)
     );
   }, [activities, searchQuery]);
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { CustomerLedgerEntry } from '../../types';
-import { ArrowRight, User, AlertCircle, Calendar, Receipt } from 'lucide-react';
+import { ArrowRight, Receipt } from 'lucide-react';
 
 interface LedgerTableProps {
   data: CustomerLedgerEntry[];
@@ -15,9 +15,11 @@ export const LedgerTable: React.FC<LedgerTableProps> = ({ data, onViewCustomer }
           <thead>
             <tr className="border-b border-gray-50 bg-gray-50/50">
               <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Customer</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Outstanding</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Overdue</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last Payment</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">0-30 Days</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">31-60 Days</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">61-90 Days</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">90+ Days</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-gray-800 uppercase tracking-wider text-right">Total Outstanding</th>
               <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
@@ -38,23 +40,28 @@ export const LedgerTable: React.FC<LedgerTableProps> = ({ data, onViewCustomer }
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4">
-                  <p className="text-sm font-bold text-gray-900">₹{entry.outstandingAmount.toLocaleString('en-IN')}</p>
-                </td>
-                <td className="px-6 py-4">
-                  <p className={`text-sm font-bold ${entry.overdueAmount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                    ₹{entry.overdueAmount.toLocaleString('en-IN')}
+                <td className="px-6 py-4 text-right">
+                  <p className={`text-sm font-medium ${entry.buckets['0_30'] > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                    ₹{entry.buckets['0_30'].toLocaleString('en-IN')}
                   </p>
                 </td>
-                <td className="px-6 py-4">
-                  {entry.lastPaymentDate ? (
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600">
-                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                      {entry.lastPaymentDate?.toDate?.()?.toLocaleDateString() || new Date(entry.lastPaymentDate).toLocaleDateString()}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-400 font-medium">No payments yet</p>
-                  )}
+                <td className="px-6 py-4 text-right">
+                  <p className={`text-sm font-medium ${entry.buckets['31_60'] > 0 ? 'text-yellow-600' : 'text-gray-300'}`}>
+                    ₹{entry.buckets['31_60'].toLocaleString('en-IN')}
+                  </p>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <p className={`text-sm font-medium ${entry.buckets['61_90'] > 0 ? 'text-orange-600' : 'text-gray-300'}`}>
+                    ₹{entry.buckets['61_90'].toLocaleString('en-IN')}
+                  </p>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <p className={`text-sm font-bold ${entry.buckets['90_plus'] > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+                    ₹{entry.buckets['90_plus'].toLocaleString('en-IN')}
+                  </p>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <p className="text-sm font-bold text-gray-900">₹{entry.outstandingAmount.toLocaleString('en-IN')}</p>
                 </td>
                 <td className="px-6 py-4 text-right">
                   <button 
@@ -92,17 +99,28 @@ export const LedgerCard: React.FC<{ entry: CustomerLedgerEntry; onClick: () => v
         <ArrowRight className="w-5 h-5 text-gray-300" />
       </div>
 
-      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-50">
+      <div className="grid grid-cols-2 gap-y-4 gap-x-2 pt-4 border-t border-gray-50 mb-4">
         <div>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Outstanding</p>
-          <p className="text-sm font-bold text-gray-900">₹{entry.outstandingAmount.toLocaleString('en-IN')}</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">0-30 Days</p>
+          <p className="text-sm font-medium text-gray-700">₹{entry.buckets['0_30'].toLocaleString('en-IN')}</p>
         </div>
         <div>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Overdue</p>
-          <p className={`text-sm font-bold ${entry.overdueAmount > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-            ₹{entry.overdueAmount.toLocaleString('en-IN')}
-          </p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">31-60 Days</p>
+          <p className="text-sm font-medium text-yellow-600">₹{entry.buckets['31_60'].toLocaleString('en-IN')}</p>
         </div>
+        <div>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">61-90 Days</p>
+          <p className="text-sm font-medium text-orange-600">₹{entry.buckets['61_90'].toLocaleString('en-IN')}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">90+ Days</p>
+          <p className="text-sm font-bold text-red-600">₹{entry.buckets['90_plus'].toLocaleString('en-IN')}</p>
+        </div>
+      </div>
+      
+      <div className="pt-4 border-t border-dashed border-gray-200 flex justify-between items-center">
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total Outstanding</span>
+        <span className="text-lg font-bold text-gray-900">₹{entry.outstandingAmount.toLocaleString('en-IN')}</span>
       </div>
     </div>
   );

@@ -96,7 +96,6 @@ export const ReminderHistoryLog: React.FC = () => {
       />
 
       <div className="space-y-8">
-        {/* Filters & Search */}
         <div className="space-y-4">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -154,44 +153,49 @@ export const ReminderHistoryLog: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredHistory.map((item) => (
-                    <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-bold text-gray-900">{item.customerName}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">
-                          {item.type.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-600">
-                          {getChannelIcon(item.channel)}
-                          {item.channel.toUpperCase()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-xs text-gray-500 font-medium">
-                          {item.sentAt?.toDate?.()?.toLocaleString() || new Date(item.sentAt).toLocaleString()}
-                        </p>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5">
-                          {item.status === 'delivered' ? (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 text-green-500" />
-                              <span className="text-xs font-bold text-green-700">Delivered</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-4 h-4 text-red-500" />
-                              <span className="text-xs font-bold text-red-700">Failed</span>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredHistory.map((item) => {
+                    const statusText = item.status || 'failed';
+                    const isSuccess = ['delivered', 'sent', 'read'].includes(statusText);
+
+                    return (
+                      <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-bold text-gray-900">{item.customerName}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded-lg">
+                            {item.type.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-xs font-bold text-indigo-600">
+                            {getChannelIcon(item.channel)}
+                            {item.channel.toUpperCase()}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-xs text-gray-500 font-medium">
+                            {(item.sentAt || item.createdAt)?.toDate?.()?.toLocaleString() || new Date(item.sentAt || item.createdAt).toLocaleString()}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5">
+                            {isSuccess ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                                <span className="text-xs font-bold text-green-700 capitalize">{statusText}</span>
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="w-4 h-4 text-red-500" />
+                                <span className="text-xs font-bold text-red-700 capitalize">{statusText}</span>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

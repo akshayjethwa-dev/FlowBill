@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useReminders } from '../hooks/useReminders';
+import { auth } from '../firebase';
+import { reminderService } from '../services/reminderService';
 import { 
   Plus, 
   Bell, 
@@ -23,7 +25,6 @@ import {
   MoreVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ReminderStatusBadge } from '../components/reminders/ReminderStatusBadge';
 import { ReminderTemplatePreviewCard } from '../components/reminders/ReminderTemplatePreviewCard';
 import { Reminder } from '../types';
 
@@ -45,18 +46,18 @@ export const ReminderCenter: React.FC = () => {
     });
   }, [reminders, searchQuery, filterStatus]);
 
-  const upcomingReminders = useMemo(() => 
-    filteredReminders.filter(r => r.status === 'upcoming').sort((a, b) => 
-      (a.scheduledDate?.toDate?.()?.getTime() || 0) - (b.scheduledDate?.toDate?.()?.getTime() || 0)
+  const queuedReminders = useMemo(() => 
+    filteredReminders.filter(r => r.status === 'queued').sort((a, b) => 
+      (a.scheduledAt?.toDate?.()?.getTime() || 0) - (b.scheduledAt?.toDate?.()?.getTime() || 0)
     ), [filteredReminders]);
 
-  const overdueReminders = useMemo(() => 
-    filteredReminders.filter(r => r.status === 'overdue').sort((a, b) => 
-      (a.scheduledDate?.toDate?.()?.getTime() || 0) - (b.scheduledDate?.toDate?.()?.getTime() || 0)
+  const sentReminders = useMemo(() => 
+    filteredReminders.filter(r => r.status === 'sent').sort((a, b) => 
+      (b.scheduledAt?.toDate?.()?.getTime() || 0) - (a.scheduledAt?.toDate?.()?.getTime() || 0)
     ), [filteredReminders]);
 
-  const otherReminders = useMemo(() => 
-    filteredReminders.filter(r => r.status !== 'upcoming' && r.status !== 'overdue'),
+  const failedReminders = useMemo(() => 
+    filteredReminders.filter(r => r.status === 'failed'),
     [filteredReminders]);
 
   const handleSendNow = async (reminder: Reminder) => {
@@ -77,6 +78,30 @@ export const ReminderCenter: React.FC = () => {
       await deleteReminder(reminderId);
     } catch (err) {
       console.error('Failed to delete reminder:', err);
+    }
+  };
+
+  // MVP Queue Reminder Setup
+  const handleQueueManual = async () => {
+    const merchantId = auth.currentUser?.uid;
+    if (!merchantId) {
+      alert("Please log in to queue a reminder.");
+      return;
+    }
+
+    try {
+      await reminderService.createReminder(merchantId, {
+        customerId: 'mvp-customer-123',
+        customerName: 'MVP Test Customer',
+        type: 'manual',
+        status: 'queued',
+        scheduledAt: new Date(),
+        message: 'This is a manually queued reminder for MVP testing.'
+      });
+      alert('Reminder queued successfully!');
+    } catch (err) {
+      console.error('Failed to queue reminder:', err);
+      alert('Failed to queue reminder.');
     }
   };
 
@@ -126,18 +151,17 @@ export const ReminderCenter: React.FC = () => {
               <History className="w-5 h-5" />
             </button>
             <button 
-              onClick={() => {}} // Placeholder for create
+              onClick={handleQueueManual}
               className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 active:scale-95"
             >
               <Plus className="w-5 h-5" />
-              <span className="hidden sm:inline">New Reminder</span>
+              <span className="hidden sm:inline">Queue reminder now</span>
             </button>
           </div>
         }
       />
 
       <div className="space-y-10">
-        {/* Filters & Search */}
         <div className="space-y-4">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -151,7 +175,7 @@ export const ReminderCenter: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {['all', 'upcoming', 'overdue', 'sent', 'cancelled'].map((status) => (
+            {['all', 'queued', 'sent', 'failed'].map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
@@ -167,7 +191,6 @@ export const ReminderCenter: React.FC = () => {
           </div>
         </div>
 
-        {/* Templates Preview Section */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -194,17 +217,15 @@ export const ReminderCenter: React.FC = () => {
           </div>
         </section>
 
-        {/* Reminders List */}
         <div className="space-y-8">
-          {/* Overdue Section */}
-          {overdueReminders.length > 0 && (
+          {failedReminders.length > 0 && (
             <section className="space-y-4">
               <h3 className="text-base font-bold text-red-600 flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5" />
-                Overdue Reminders
+                Failed Reminders
               </h3>
               <div className="grid grid-cols-1 gap-4">
-                {overdueReminders.map(reminder => (
+                {failedReminders.map(reminder => (
                   <ReminderCard 
                     key={reminder.id} 
                     reminder={reminder} 
@@ -217,20 +238,19 @@ export const ReminderCenter: React.FC = () => {
             </section>
           )}
 
-          {/* Upcoming Section */}
           <section className="space-y-4">
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
               <Clock className="w-5 h-5 text-indigo-600" />
-              Upcoming Reminders
+              Queued Reminders
             </h3>
-            {upcomingReminders.length === 0 ? (
+            {queuedReminders.length === 0 ? (
               <div className="py-12 text-center bg-gray-50 rounded-3xl border border-dashed border-gray-200">
                 <Bell className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 text-sm">No upcoming reminders scheduled.</p>
+                <p className="text-gray-500 text-sm">No queued reminders scheduled.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
-                {upcomingReminders.map(reminder => (
+                {queuedReminders.map(reminder => (
                   <ReminderCard 
                     key={reminder.id} 
                     reminder={reminder} 
@@ -243,15 +263,14 @@ export const ReminderCenter: React.FC = () => {
             )}
           </section>
 
-          {/* Other Reminders (Sent/Cancelled) */}
-          {otherReminders.length > 0 && (
+          {sentReminders.length > 0 && (
             <section className="space-y-4">
               <h3 className="text-base font-bold text-gray-500 flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5" />
-                Recent Activity
+                Sent Activity
               </h3>
               <div className="grid grid-cols-1 gap-4 opacity-75">
-                {otherReminders.map(reminder => (
+                {sentReminders.map(reminder => (
                   <ReminderCard 
                     key={reminder.id} 
                     reminder={reminder} 
@@ -262,22 +281,6 @@ export const ReminderCenter: React.FC = () => {
                 ))}
               </div>
             </section>
-          )}
-
-          {filteredReminders.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-gray-200 shadow-sm text-center px-6">
-              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6">
-                {searchQuery ? <SearchX className="w-10 h-10" /> : <Bell className="w-10 h-10" />}
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
-                {searchQuery ? 'No results found' : 'No reminders set'}
-              </h3>
-              <p className="text-gray-500 max-w-xs mb-8">
-                {searchQuery 
-                  ? `We couldn't find any reminders matching "${searchQuery}". Try a different search.` 
-                  : "Start automating your customer communication. Set up reminders for payments, follow-ups, and more."}
-              </p>
-            </div>
           )}
         </div>
       </div>
@@ -303,7 +306,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ reminder, onSend, onDelete,
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className={`w-12 h-12 rounded-xl flex items-center justify-center border shrink-0 ${
-            reminder.status === 'overdue' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+            reminder.status === 'failed' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'
           }`}>
             <Bell className="w-6 h-6" />
           </div>
@@ -312,7 +315,14 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ reminder, onSend, onDelete,
               <h3 className="text-base font-bold text-gray-900 leading-tight">
                 {reminder.customerName}
               </h3>
-              <ReminderStatusBadge status={reminder.status} />
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-wider ${
+                reminder.status === 'queued' ? 'bg-amber-100 text-amber-700' :
+                reminder.status === 'sent' ? 'bg-green-100 text-green-700' :
+                reminder.status === 'failed' ? 'bg-red-100 text-red-700' :
+                'bg-gray-100 text-gray-700'
+              }`}>
+                {reminder.status}
+              </span>
             </div>
             <p className="text-xs text-gray-500 font-medium mb-2 line-clamp-1 italic">
               "{reminder.message}"
@@ -320,7 +330,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ reminder, onSend, onDelete,
             <div className="flex items-center gap-3 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
               <div className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
-                Scheduled: {reminder.scheduledDate?.toDate?.()?.toLocaleDateString() || new Date(reminder.scheduledDate).toLocaleDateString()}
+                Scheduled: {reminder.scheduledAt?.toDate?.()?.toLocaleString() || new Date(reminder.scheduledAt).toLocaleString()}
               </div>
               <div className="flex items-center gap-1">
                 <Tag className="w-3.5 h-3.5" />

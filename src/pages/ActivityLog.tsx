@@ -44,7 +44,7 @@ const ActivityLog: React.FC = () => {
             
             <button 
               onClick={handleRefresh}
-              className={`p-2 hover:bg-gray-100 rounded-full transition-all ${loading ? 'animate-spin text-blue-500' : 'text-gray-400'}`}
+              className={`p-2 hover:bg-gray-100 rounded-full transition-all ${loading ? 'animate-spin text-indigo-500' : 'text-gray-400'}`}
               title="Refresh feed"
             >
               <RefreshCw className="w-4 h-4" />
@@ -52,8 +52,8 @@ const ActivityLog: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <History className="w-6 h-6 text-blue-600" />
+            <div className="p-2 bg-indigo-50 rounded-lg">
+              <History className="w-6 h-6 text-indigo-600" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">Activity Feed</h1>
@@ -65,6 +65,7 @@ const ActivityLog: React.FC = () => {
 
       <main className="max-w-5xl mx-auto px-4 py-6">
         <motion.div
+          key={refreshKey}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}

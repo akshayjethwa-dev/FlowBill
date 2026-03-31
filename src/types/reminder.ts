@@ -5,18 +5,19 @@ export interface Reminder extends BaseEntity {
   customerName: string;
   invoiceId?: string;
   invoiceNumber?: string;
-  type: 'payment' | 'follow_up' | 'custom';
-  status: 'upcoming' | 'overdue' | 'sent' | 'cancelled';
-  scheduledDate: any;
+  type: 'payment' | 'follow_up' | 'custom' | 'manual';
+  status: 'queued' | 'upcoming' | 'overdue' | 'sent' | 'cancelled' | 'failed';
+  scheduledAt: any;
   message: string;
 }
 
 export interface ReminderHistory extends BaseEntity {
-  reminderId: string;
+  reminderId?: string;
   customerId: string;
   customerName: string;
   type: string;
-  sentAt: any;
+  sentAt?: any;
+  createdAt?: any;
   channel: 'whatsapp' | 'sms' | 'email';
-  status: 'delivered' | 'failed';
+  status: 'delivered' | 'failed' | 'sent' | 'read';
 }

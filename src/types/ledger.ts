@@ -18,4 +18,10 @@ export interface CustomerLedgerEntry {
   overdueAmount: number;
   lastPaymentDate?: any;
   invoiceCount: number;
+  buckets: {
+    '0_30': number;
+    '31_60': number;
+    '61_90': number;
+    '90_plus': number;
+  };
 }

@@ -1,146 +1,155 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { Product } from '../../types';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Save } from 'lucide-react';
 import { motion } from 'motion/react';
 
+const productSchema = z.object({
+  name: z.string().min(1, "Product name is required"),
+  sku: z.string().optional(),
+  unit: z.string().min(1, "Unit of measurement is required"),
+  price: z.number().min(0, "Price cannot be negative"),
+  gstRate: z.number().min(0, "GST Rate cannot be negative").max(100, "Invalid GST Rate"),
+  isActive: z.boolean(),
+});
+
+export type ProductFormValues = z.infer<typeof productSchema>;
+
 interface ProductFormProps {
-  product?: Product;
-  onSubmit: (data: Omit<Product, 'id' | 'merchantId' | 'createdAt'>) => Promise<void>;
+  product?: Product | null;
+  onSubmit: (data: ProductFormValues) => Promise<void>;
   onClose: () => void;
 }
 
 export const ProductForm: React.FC<ProductFormProps> = ({ product, onSubmit, onClose }) => {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: product?.name || '',
-    sku: product?.sku || '',
-    unit: product?.unit || 'Pcs',
-    price: product?.price || 0,
-    gstRate: product?.gstRate || 18,
-    isActive: product?.isActive ?? true,
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<ProductFormValues>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      name: product?.name || '',
+      sku: product?.sku || '',
+      unit: product?.unit || 'Nos',
+      price: product?.price || 0,
+      gstRate: product?.gstRate || 0,
+      isActive: product ? product.isActive : true,
+    }
   });
 
-  const units = ['Pcs', 'Kg', 'Box', 'Ltr', 'Mtr', 'Set', 'Unit'];
-  const gstRates = [0, 5, 12, 18, 28];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name || formData.price < 0) return;
-
-    setLoading(true);
-    try {
-      await onSubmit(formData);
-      onClose();
-    } catch (error) {
-      console.error('Failed to save product:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden"
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-3xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
           <h2 className="text-xl font-bold text-gray-900">
             {product ? 'Edit Product' : 'Add New Product'}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X className="w-5 h-5 text-gray-500" />
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-bold text-gray-700">Product Name *</label>
-            <input
-              required
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-              placeholder="e.g. Wireless Mouse"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">SKU (Optional)</label>
+        <div className="p-6 overflow-y-auto">
+          <form id="product-form" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            {/* Name */}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1.5">Product Name <span className="text-red-500">*</span></label>
               <input
-                type="text"
-                value={formData.sku}
-                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-                placeholder="e.g. WM-001"
+                {...register("name")}
+                className={`w-full px-4 py-3 rounded-xl border ${errors.name ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all`}
+                placeholder="E.g. Premium Basmati Rice"
               />
+              {errors.name && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.name.message}</p>}
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">Unit</label>
-              <select
-                value={formData.unit}
-                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none bg-white"
-              >
-                {units.map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">Price (₹) *</label>
-              <input
-                required
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-                min="0"
-                step="0.01"
+            {/* SKU & Unit */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">SKU Code</label>
+                <input
+                  {...register("sku")}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all font-mono uppercase"
+                  placeholder="PRD-001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Unit <span className="text-red-500">*</span></label>
+                <input
+                  {...register("unit")}
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.unit ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all`}
+                  placeholder="Kg, Ltr, Box, Nos"
+                />
+                {errors.unit && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.unit.message}</p>}
+              </div>
+            </div>
+
+            {/* Price & GST */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Price (₹) <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  step="0.01"
+                  {...register("price", { valueAsNumber: true })}
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.price ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all`}
+                  placeholder="0.00"
+                />
+                {errors.price && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.price.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">GST Rate (%) <span className="text-red-500">*</span></label>
+                <select
+                  {...register("gstRate", { valueAsNumber: true })}
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.gstRate ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all bg-white`}
+                >
+                  <option value={0}>0% (Exempt)</option>
+                  <option value={5}>5%</option>
+                  <option value={12}>12%</option>
+                  <option value={18}>18%</option>
+                  <option value={28}>28%</option>
+                </select>
+                {errors.gstRate && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.gstRate.message}</p>}
+              </div>
+            </div>
+
+            {/* Status Toggle */}
+            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <input 
+                type="checkbox" 
+                id="isActive"
+                {...register("isActive")}
+                className="w-5 h-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
               />
+              <label htmlFor="isActive" className="text-sm font-bold text-gray-900 cursor-pointer select-none">
+                Product is Active
+              </label>
+              <p className="text-xs text-gray-500 ml-auto">Uncheck to hide from new invoices</p>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">GST Rate (%)</label>
-              <select
-                value={formData.gstRate}
-                onChange={(e) => setFormData({ ...formData, gstRate: parseInt(e.target.value) })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none bg-white"
-              >
-                {gstRates.map(r => <option key={r} value={r}>{r}%</option>)}
-              </select>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-3 py-2">
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
-              className={`w-12 h-6 rounded-full transition-all relative ${formData.isActive ? 'bg-green-500' : 'bg-gray-300'}`}
-            >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${formData.isActive ? 'left-7' : 'left-1'}`} />
-            </button>
-            <span className="text-sm font-bold text-gray-700">Active Status</span>
-          </div>
-        </form>
+          </form>
+        </div>
 
-        <div className="p-6 border-t border-gray-100 flex gap-3 bg-gray-50/50">
+        <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-6 py-3 border border-gray-200 text-gray-700 font-bold rounded-2xl hover:bg-gray-100 transition-all"
+            className="px-6 py-3 rounded-xl font-bold text-gray-600 hover:bg-gray-200 transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="flex-[2] px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-2"
+            type="submit"
+            form="product-form"
+            disabled={isSubmitting}
+            className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center gap-2 disabled:opacity-70"
           >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (product ? 'Update' : 'Save')}
+            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {product ? 'Update Product' : 'Save Product'}
           </button>
         </div>
       </motion.div>

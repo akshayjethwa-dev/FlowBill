@@ -1,166 +1,164 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { Customer } from '../../types';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Save } from 'lucide-react';
 import { motion } from 'motion/react';
 
+const customerSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  phone: z.string()
+    .min(10, "Phone must be at least 10 characters")
+    .max(15, "Phone must be at most 15 characters")
+    .regex(/^[0-9+\-\s()]*$/, "Invalid phone number format"),
+  businessName: z.string().optional(),
+  email: z.string().email("Invalid email address").optional().or(z.literal('')),
+  gstin: z.string().max(15, "GSTIN must be at most 15 characters").optional().or(z.literal('')),
+  address: z.string().optional(),
+  // ✅ FIXED: Removed the invalid_type_error object completely. 
+  // React Hook Form's valueAsNumber will handle the conversion safely.
+  creditDays: z.number().min(0, "Credit days cannot be negative"),
+});
+
+export type CustomerFormValues = z.infer<typeof customerSchema>;
+
 interface CustomerFormProps {
-  customer?: Customer;
-  onSubmit: (data: Omit<Customer, 'id' | 'merchantId' | 'createdAt'>) => Promise<void>;
+  customer?: Customer | null;
+  onSubmit: (data: CustomerFormValues) => Promise<void>;
   onClose: () => void;
 }
 
 export const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onSubmit, onClose }) => {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: customer?.name || '',
-    phone: customer?.phone || '',
-    businessName: customer?.businessName || '',
-    gstin: customer?.gstin || '',
-    address: customer?.address || '',
-    creditDays: customer?.creditDays || 30,
-    outstandingAmount: customer?.outstandingAmount || 0,
-    status: customer?.status || 'active' as const,
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<CustomerFormValues>({
+    resolver: zodResolver(customerSchema),
+    defaultValues: {
+      name: customer?.name || '',
+      phone: customer?.phone || '',
+      businessName: customer?.businessName || '',
+      email: customer?.email || '',
+      gstin: customer?.gstin || '',
+      address: customer?.address || '',
+      creditDays: customer?.creditDays || 0,
+    }
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name || !formData.phone) return;
-
-    setLoading(true);
-    try {
-      await onSubmit(formData);
-      onClose();
-    } catch (error) {
-      console.error('Failed to save customer:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden"
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-3xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
           <h2 className="text-xl font-bold text-gray-900">
             {customer ? 'Edit Customer' : 'Add New Customer'}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X className="w-5 h-5 text-gray-500" />
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">Customer Name *</label>
-              <input
-                required
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-                placeholder="e.g. Rahul Sharma"
+        <div className="p-6 overflow-y-auto">
+          <form id="customer-form" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+            {/* Name & Phone */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Full Name <span className="text-red-500">*</span></label>
+                <input
+                  {...register("name")}
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.name ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all`}
+                  placeholder="Ravi Kumar"
+                />
+                {errors.name && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.name.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Phone Number <span className="text-red-500">*</span></label>
+                <input
+                  {...register("phone")}
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.phone ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all`}
+                  placeholder="+91 98765 43210"
+                />
+                {errors.phone && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.phone.message}</p>}
+              </div>
+            </div>
+
+            {/* Business & Email */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Business Name</label>
+                <input
+                  {...register("businessName")}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  placeholder="Ravi Traders"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Email Address</label>
+                <input
+                  {...register("email")}
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.email ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all`}
+                  placeholder="ravi@example.com"
+                />
+                {errors.email && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.email.message}</p>}
+              </div>
+            </div>
+
+            {/* GSTIN & Credit Days */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">GSTIN</label>
+                <input
+                  {...register("gstin")}
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.gstin ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all font-mono uppercase`}
+                  placeholder="22AAAAA0000A1Z5"
+                  maxLength={15}
+                />
+                {errors.gstin && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.gstin.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">Credit Days</label>
+                <input
+                  type="number"
+                  {...register("creditDays", { valueAsNumber: true })} // valueAsNumber handles the string->number conversion natively
+                  className={`w-full px-4 py-3 rounded-xl border ${errors.creditDays ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-indigo-500'} focus:ring-2 focus:border-transparent outline-none transition-all`}
+                  placeholder="30"
+                />
+                {errors.creditDays && <p className="text-red-500 text-xs mt-1.5 font-medium">{errors.creditDays.message}</p>}
+              </div>
+            </div>
+
+            {/* Address */}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-1.5">Address</label>
+              <textarea
+                {...register("address")}
+                rows={3}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all resize-none"
+                placeholder="Complete business address..."
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">Phone Number *</label>
-              <input
-                required
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-                placeholder="e.g. 9876543210"
-              />
-            </div>
-          </div>
+          </form>
+        </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-bold text-gray-700">Business Name (Optional)</label>
-            <input
-              type="text"
-              value={formData.businessName}
-              onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-              placeholder="e.g. Sharma Electronics"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-bold text-gray-700">GSTIN (Optional)</label>
-            <input
-              type="text"
-              value={formData.gstin}
-              onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-              placeholder="e.g. 07AAAAA0000A1Z5"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-bold text-gray-700">Address</label>
-            <textarea
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none resize-none"
-              rows={2}
-              placeholder="Full address..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">Credit Days</label>
-              <input
-                type="number"
-                value={formData.creditDays}
-                onChange={(e) => setFormData({ ...formData, creditDays: parseInt(e.target.value) || 0 })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-bold text-gray-700">Outstanding (₹)</label>
-              <input
-                type="number"
-                value={formData.outstandingAmount}
-                onChange={(e) => setFormData({ ...formData, outstandingAmount: parseFloat(e.target.value) || 0 })}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-sm font-bold text-gray-700">Status</label>
-            <select
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none bg-white"
-            >
-              <option value="active">Active</option>
-              <option value="overdue">Overdue</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-        </form>
-
-        <div className="p-6 border-t border-gray-100 flex gap-3 bg-gray-50/50">
+        <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-6 py-3 border border-gray-200 text-gray-700 font-bold rounded-2xl hover:bg-gray-100 transition-all"
+            className="px-6 py-3 rounded-xl font-bold text-gray-600 hover:bg-gray-200 transition-colors"
           >
             Cancel
           </button>
           <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="flex-[2] px-6 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-2"
+            type="submit"
+            form="customer-form"
+            disabled={isSubmitting}
+            className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center gap-2 disabled:opacity-70"
           >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (customer ? 'Update' : 'Save')}
+            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {customer ? 'Update Customer' : 'Save Customer'}
           </button>
         </div>
       </motion.div>

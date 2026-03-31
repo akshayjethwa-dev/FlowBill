@@ -47,9 +47,10 @@ export const useEstimates = () => {
     return await estimateService.deleteEstimate(user.uid, estimateId);
   };
 
-  const convertToInvoice = async (estimate: Estimate) => {
+  // ✅ Updated to accept the ID and match the new service signature
+  const convertToInvoice = async (estimateId: string) => {
     if (!user) return;
-    return await estimateService.convertToInvoice(user.uid, estimate);
+    return await estimateService.convertToInvoice(user.uid, estimateId);
   };
 
   return { 

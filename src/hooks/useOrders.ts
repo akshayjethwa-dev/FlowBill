@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Order } from '../types';
 import { orderService } from '../services/orderService';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext'; // ✅ Corrected Auth Path
 
 export const useOrders = () => {
   const { user } = useAuth();

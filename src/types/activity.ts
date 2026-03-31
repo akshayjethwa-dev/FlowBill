@@ -7,7 +7,9 @@ export type ActivityType =
   | 'customer' 
   | 'reminder'
   | 'invoice_created' 
-  | 'invoice_updated' 
+  | 'invoice_updated'
+  | 'order_created'   
+  | 'order_updated'
   | 'reminder_sent' 
   | 'payment_marked' 
   | 'customer_added';

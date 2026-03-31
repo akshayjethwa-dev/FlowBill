@@ -1,16 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { ProductCard } from '../components/products/ProductCard';
-import { ProductForm } from '../components/products/ProductForm';
+import { ProductForm, ProductFormValues } from '../components/products/ProductForm';
 import { ProductFilters } from '../components/products/ProductFilters';
 import { useProducts } from '../hooks/useProducts';
+import { Product } from '../types';
 import { Plus, PackagePlus, AlertCircle, Loader2, SearchX } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const ProductList: React.FC = () => {
   const { products, loading, error, addProduct, updateProduct, deleteProduct } = useProducts();
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
@@ -29,17 +30,34 @@ export const ProductList: React.FC = () => {
     });
   }, [products, searchQuery, filterStatus]);
 
-  const handleAddProduct = async (data: any) => {
-    await addProduct(data);
-  };
-
-  const handleUpdateProduct = async (data: any) => {
-    if (editingProduct) {
-      await updateProduct(editingProduct.id, data);
+  const handleFormSubmit = async (data: ProductFormValues) => {
+    try {
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, data);
+      } else {
+        await addProduct(data);
+      }
+      closeForm();
+    } catch (err) {
+      console.error('Failed to save product', err);
+      alert('Failed to save product. Please try again.');
     }
   };
 
-  const openEditForm = (product: any) => {
+  const handleToggleActive = async (id: string, currentStatus: boolean) => {
+    try {
+      await updateProduct(id, { isActive: !currentStatus });
+    } catch (err) {
+      console.error('Failed to update status', err);
+    }
+  };
+
+  const openAddForm = () => {
+    setEditingProduct(null);
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (product: Product) => {
     setEditingProduct(product);
     setIsFormOpen(true);
   };
@@ -87,7 +105,7 @@ export const ProductList: React.FC = () => {
         subtitle="Manage your inventory, pricing, and GST details."
         actions={
           <button 
-            onClick={() => setIsFormOpen(true)}
+            onClick={openAddForm}
             className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 active:scale-95"
           >
             <Plus className="w-5 h-5" />
@@ -119,7 +137,7 @@ export const ProductList: React.FC = () => {
             </p>
             {!searchQuery && (
               <button 
-                onClick={() => setIsFormOpen(true)}
+                onClick={openAddForm}
                 className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
               >
                 Add Your First Product
@@ -142,6 +160,7 @@ export const ProductList: React.FC = () => {
                     product={product} 
                     onEdit={openEditForm} 
                     onDelete={deleteProduct} 
+                    onToggleActive={handleToggleActive}
                   />
                 </motion.div>
               ))}
@@ -150,13 +169,15 @@ export const ProductList: React.FC = () => {
         )}
       </div>
 
-      {isFormOpen && (
-        <ProductForm 
-          product={editingProduct}
-          onSubmit={editingProduct ? handleUpdateProduct : handleAddProduct}
-          onClose={closeForm}
-        />
-      )}
+      <AnimatePresence>
+        {isFormOpen && (
+          <ProductForm 
+            product={editingProduct}
+            onSubmit={handleFormSubmit}
+            onClose={closeForm}
+          />
+        )}
+      </AnimatePresence>
     </PageContainer>
   );
 };

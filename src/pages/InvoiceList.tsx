@@ -1,7 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useInvoices } from '../hooks/useInvoices';
-import { Plus, FileText, Search, Filter, X, Calendar, User, ArrowRight, AlertCircle, Loader2, SearchX, Receipt } from 'lucide-react';
+import { 
+  Plus, 
+  Search, 
+  Calendar, 
+  ArrowRight, 
+  AlertCircle, 
+  Loader2, 
+  SearchX, 
+  Receipt, 
+  Filter,
+  X,          // ✅ Added X
+  FileText    // ✅ Added FileText
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { InvoiceStatusBadge } from '../components/invoices/InvoiceStatusBadge';
 
@@ -9,6 +21,7 @@ export const InvoiceList: React.FC = () => {
   const { invoices, loading, error } = useInvoices();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter((invoice) => {
@@ -18,9 +31,26 @@ export const InvoiceList: React.FC = () => {
       
       const matchesStatus = filterStatus === 'all' || invoice.status === filterStatus;
       
-      return matchesSearch && matchesStatus;
+      let matchesDate = true;
+      if (dateRange.start || dateRange.end) {
+        // Fallback to current date if createdAt is missing temporarily during optimistic updates
+        const invDate = invoice.createdAt?.toDate?.() || new Date(invoice.createdAt || Date.now());
+        
+        if (dateRange.start && invDate < new Date(dateRange.start)) {
+          matchesDate = false;
+        }
+        if (dateRange.end) {
+          const endDate = new Date(dateRange.end);
+          endDate.setHours(23, 59, 59, 999); // Include the whole end day
+          if (invDate > endDate) {
+            matchesDate = false;
+          }
+        }
+      }
+      
+      return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [invoices, searchQuery, filterStatus]);
+  }, [invoices, searchQuery, filterStatus, dateRange]);
 
   if (loading) {
     return (
@@ -71,15 +101,50 @@ export const InvoiceList: React.FC = () => {
 
       <div className="space-y-8">
         <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by customer name or invoice #..."
-              className="w-full pl-12 pr-4 py-4 bg-white rounded-2xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
-            />
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by customer name or invoice #..."
+                className="w-full pl-12 pr-4 py-4 bg-white rounded-2xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
+              />
+            </div>
+            
+            {/* Date Range Filters */}
+            <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-gray-200 shadow-sm">
+              <div className="flex items-center gap-2 px-2">
+                <Calendar className="w-4 h-4 text-gray-400" />
+                <input 
+                  type="date" 
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="bg-transparent border-none text-sm outline-none text-gray-700 font-medium cursor-pointer"
+                  title="Start Date"
+                />
+              </div>
+              <span className="text-gray-300">-</span>
+              <div className="flex items-center gap-2 px-2">
+                <input 
+                  type="date" 
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="bg-transparent border-none text-sm outline-none text-gray-700 font-medium cursor-pointer"
+                  title="End Date"
+                />
+              </div>
+              {(dateRange.start || dateRange.end) && (
+                <button 
+                  onClick={() => setDateRange({ start: '', end: '' })}
+                  className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 transition-colors"
+                  title="Clear Dates"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -102,17 +167,17 @@ export const InvoiceList: React.FC = () => {
         {filteredInvoices.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-gray-200 shadow-sm text-center px-6">
             <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6">
-              {searchQuery ? <SearchX className="w-10 h-10" /> : <Receipt className="w-10 h-10" />}
+              {searchQuery || dateRange.start ? <SearchX className="w-10 h-10" /> : <Receipt className="w-10 h-10" />}
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">
-              {searchQuery ? 'No results found' : 'No invoices yet'}
+              {searchQuery || dateRange.start ? 'No results found' : 'No invoices yet'}
             </h3>
             <p className="text-gray-500 max-w-xs mb-8">
-              {searchQuery 
-                ? `We couldn't find any invoices matching "${searchQuery}". Try a different search.` 
+              {searchQuery || dateRange.start 
+                ? `We couldn't find any invoices matching your filters. Try adjusting them.` 
                 : "Create formal invoices for your customers. You can track their payment status and send reminders."}
             </p>
-            {!searchQuery && (
+            {!(searchQuery || dateRange.start) && (
               <button 
                 onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'create-invoice' }))}
                 className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"

@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Smartphone, Mail, ArrowRight } from 'lucide-react';
+import { Smartphone, ArrowRight } from 'lucide-react';
 import { BRAND_NAME } from '../../constants';
 
 export const LoginPage: React.FC = () => {
-  const { loginWithGoogle, loginWithEmail, loading } = useAuth();
-  const [isEmailMode, setIsEmailMode] = useState(true); // Default to true as per MVP
+  // ✅ Destructure registerWithEmail
+  const { loginWithGoogle, loginWithEmail, registerWithEmail, loading } = useAuth();
+  
+  // ✅ Added toggle for Login / Signup mode
+  const [isLogin, setIsLogin] = useState(true); 
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,14 +23,18 @@ export const LoginPage: React.FC = () => {
     );
   }
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
     try {
-      await loginWithEmail(email, password);
+      if (isLogin) {
+        await loginWithEmail(email, password);
+      } else {
+        await registerWithEmail(email, password); // ✅ Calls the new signup function
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to login');
+      setError(err.message || 'Authentication failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -74,9 +82,14 @@ export const LoginPage: React.FC = () => {
             <span className="text-xl font-bold text-gray-900">{BRAND_NAME}</span>
           </div>
 
+          {/* ✅ Dynamic Header based on state */}
           <div className="text-center lg:text-left mb-10">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h2>
-            <p className="text-gray-500">Sign in to manage your business ledger.</p>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">
+              {isLogin ? 'Welcome back' : 'Create an account'}
+            </h2>
+            <p className="text-gray-500">
+              {isLogin ? 'Sign in to manage your business ledger.' : 'Enter your email to get started.'}
+            </p>
           </div>
 
           <div className="space-y-4">
@@ -93,77 +106,60 @@ export const LoginPage: React.FC = () => {
                 <div className="w-full border-t border-gray-100"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-400">Or continue with</span>
+                <span className="px-2 bg-white text-gray-400">Or continue with email</span>
               </div>
             </div>
 
             {error && <div className="text-red-500 text-sm text-center mb-4">{error}</div>}
 
-            {isEmailMode ? (
-              <form onSubmit={handleEmailLogin} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                  <input 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder="name@business.com"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    placeholder="••••••••"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                  />
-                </div>
-                <button disabled={isSubmitting} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-70">
-                  {isSubmitting ? 'Signing in...' : 'Sign In'} <ArrowRight className="w-4 h-4" />
-                </button>
-                {/* MVP Phone login disabled 
-                <button 
-                  type="button"
-                  onClick={() => setIsEmailMode(false)}
-                  className="w-full text-sm text-gray-500 hover:text-indigo-600 transition-colors"
-                >
-                  Use Phone Number instead
-                </button>
-                */}
-              </form>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp Number</label>
-                  <div className="flex gap-2">
-                    <div className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-500 font-medium">+91</div>
-                    <input 
-                      type="tel" 
-                      placeholder="98765 43210"
-                      className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                    />
-                  </div>
-                </div>
-                <button className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
-                  Get OTP <ArrowRight className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => setIsEmailMode(true)}
-                  className="w-full text-sm text-gray-500 hover:text-indigo-600 transition-colors"
-                >
-                  Use Email Address instead
-                </button>
+            {/* ✅ Unified Email/Password Form */}
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="name@business.com"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                />
               </div>
-            )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                />
+              </div>
+              <button disabled={isSubmitting} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-70">
+                {isSubmitting ? (isLogin ? 'Signing in...' : 'Creating account...') : (isLogin ? 'Sign In' : 'Sign Up')} <ArrowRight className="w-4 h-4" />
+              </button>
+            </form>
+
+            {/* ✅ Toggle Button */}
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                {isLogin ? "Don't have an account? " : "Already have an account? "}
+                <button 
+                  onClick={() => {
+                    setIsLogin(!isLogin);
+                    setError(''); // Clear errors when switching
+                  }}
+                  className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors"
+                >
+                  {isLogin ? 'Sign up' : 'Sign in'}
+                </button>
+              </p>
+            </div>
           </div>
 
           <p className="mt-12 text-center text-xs text-gray-400">
-            By signing in, you agree to our <br />
+            By continuing, you agree to our <br />
             <a href="#" className="underline hover:text-gray-600">Terms of Service</a> and <a href="#" className="underline hover:text-gray-600">Privacy Policy</a>.
           </p>
         </div>

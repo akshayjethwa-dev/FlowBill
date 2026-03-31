@@ -1,42 +1,85 @@
-import {
-  collection, addDoc, updateDoc, doc,
-  query, orderBy, getDocs, serverTimestamp,
-} from "firebase/firestore";
-import { db } from "../firebase";
-import { Customer } from "../types";  // ✅ single source of truth
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  orderBy, 
+  onSnapshot,
+  serverTimestamp
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import { Customer } from '../types';
+import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 
-// Input type — only the fields a user fills in
-export type CustomerData = Omit<
-  Customer,
-  "id" | "merchantId" | "createdAt" | "updatedAt"
->;
+const COLLECTION_NAME = 'customers';
 
-const customersPath = (merchantId: string) =>
-  `merchants/${merchantId}/customers`;
+export type CustomerData = Omit<Customer, 'id' | 'merchantId' | 'createdAt'>;
 
-export async function listCustomers(merchantId: string): Promise<Customer[]> {
-  const ref = collection(db, customersPath(merchantId));
-  const q = query(ref, orderBy("createdAt", "desc"));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Customer, "id">) }));
-}
+export const customerService = {
+  getCustomersPath: (merchantId: string) => `merchants/${merchantId}/${COLLECTION_NAME}`,
 
-export async function createCustomer(merchantId: string, data: CustomerData): Promise<string> {
-  const ref = collection(db, customersPath(merchantId));
-  const docRef = await addDoc(ref, {
-    ...data,
-    merchantId,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return docRef.id;
-}
+  subscribeToCustomers: (
+    merchantId: string, 
+    callback: (customers: Customer[]) => void,
+    onError: (error: any) => void
+  ) => {
+    const path = customerService.getCustomersPath(merchantId);
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
 
-export async function updateCustomer(
-  merchantId: string,
-  customerId: string,
-  data: Partial<CustomerData>
-): Promise<void> {
-  const ref = doc(db, customersPath(merchantId), customerId);
-  await updateDoc(ref, { ...data, updatedAt: serverTimestamp() });
-}
+    return onSnapshot(q, (snapshot) => {
+      const customers = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Customer[];
+      callback(customers);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+      onError(error);
+    });
+  },
+
+  addCustomer: async (merchantId: string, customerData: CustomerData) => {
+    const path = customerService.getCustomersPath(merchantId);
+    const customerRef = doc(collection(db, path));
+    const newCustomer: Customer = {
+      ...customerData,
+      id: customerRef.id,
+      merchantId,
+      createdAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(customerRef, newCustomer);
+      return newCustomer;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+      throw error;
+    }
+  },
+
+  updateCustomer: async (merchantId: string, customerId: string, customerData: Partial<Customer>) => {
+    const path = customerService.getCustomersPath(merchantId);
+    const customerRef = doc(db, path, customerId);
+
+    try {
+      await updateDoc(customerRef, customerData);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+      throw error;
+    }
+  },
+
+  deleteCustomer: async (merchantId: string, customerId: string) => {
+    const path = customerService.getCustomersPath(merchantId);
+    const customerRef = doc(db, path, customerId);
+
+    try {
+      await deleteDoc(customerRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+      throw error;
+    }
+  }
+};

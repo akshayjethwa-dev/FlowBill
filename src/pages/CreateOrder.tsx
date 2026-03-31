@@ -1,241 +1,407 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
-import { CustomerSelector } from '../components/orders/CustomerSelector';
-import { ProductSelector } from '../components/orders/ProductSelector';
-import { OrderItemRow } from '../components/orders/OrderItemRow';
-import { OrderTotals } from '../components/orders/OrderTotals';
 import { useOrders } from '../hooks/useOrders';
-import { Customer, Product, OrderItem } from '../types';
-import { Save, FileText, X, Loader2, AlertCircle, ShoppingBag, FileCheck } from 'lucide-react';
+import { useCustomers } from '../hooks/useCustomers';
+import { useProducts } from '../hooks/useProducts';
+import { Customer, OrderItem, Product } from '../types';
+import { 
+  ArrowLeft, Search, Plus, Trash2, Calculator, Save, User, Package, Calendar,
+  AlertCircle, Loader2, CheckCircle2, ShoppingCart
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Timestamp } from 'firebase/firestore';
 
 export const CreateOrder: React.FC = () => {
-  const { addOrder } = useOrders();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  
+  const { addOrder } = useOrders();    
+  const { customers } = useCustomers();
+  const { products } = useProducts();
+
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [notes, setNotes] = useState('');
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [deliveryDate, setDeliveryDate] = useState(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
-  const handleAddProduct = (product: Product) => {
-    const existingItemIndex = items.findIndex(i => i.productId === product.id);
-    
-    if (existingItemIndex > -1) {
-      const newItems = [...items];
-      newItems[existingItemIndex].qty += 1;
-      newItems[existingItemIndex].amount = newItems[existingItemIndex].qty * newItems[existingItemIndex].rate;
-      setItems(newItems);
+  // Search states
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [showCustomerList, setShowCustomerList] = useState(false);
+  const [showProductList, setShowProductList] = useState(false);
+
+  const filteredCustomers = useMemo(() => 
+    customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())),
+    [customers, customerSearch]
+  );
+
+  const filteredProducts = useMemo(() => 
+    products.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) && p.isActive),
+    [products, productSearch]
+  );
+
+  const subtotal = useMemo(() => items.reduce((sum, item) => sum + item.amount, 0), [items]);
+  const gstTotal = useMemo(() => items.reduce((sum, item) => sum + (item.amount * item.gstRate / 100), 0), [items]);
+  const totalAmount = subtotal + gstTotal;
+
+  const addItem = (product: Product) => {
+    const existingItem = items.find(item => item.productId === product.id);
+    if (existingItem) {
+      setItems(items.map(item => 
+        item.productId === product.id 
+          ? { ...item, qty: item.qty + 1, amount: (item.qty + 1) * item.rate }
+          : item
+      ));
     } else {
       setItems([...items, {
         productId: product.id,
         name: product.name,
         qty: 1,
         rate: product.price,
-        gstRate: product.gstRate,
+        gstRate: product.gstRate || 0,
         amount: product.price
       }]);
     }
+    setShowProductList(false);
+    setProductSearch('');
   };
 
-  const handleUpdateItem = (index: number, updates: Partial<OrderItem>) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], ...updates };
-    setItems(newItems);
+  const updateItemQty = (productId: string, qty: number) => {
+    if (qty < 1) return;
+    setItems(items.map(item => 
+      item.productId === productId 
+        ? { ...item, qty, amount: qty * item.rate }
+        : item
+    ));
   };
 
-  const handleRemoveItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
+  const removeItem = (productId: string) => {
+    setItems(items.filter(item => item.productId !== productId));
   };
 
-  const calculateTotal = () => {
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-    const gstTotal = items.reduce((sum, item) => sum + (item.amount * item.gstRate / 100), 0);
-    return subtotal + gstTotal;
-  };
+  const handleSave = async (status: 'draft' | 'confirmed' = 'draft') => {
+    if (!selectedCustomer || items.length === 0) return;
 
-  const handleSubmit = async (status: 'draft' | 'confirmed') => {
-    if (!selectedCustomer) {
-      setError('Please select a customer first.');
-      return;
-    }
-    if (items.length === 0) {
-      setError('Please add at least one product to the order.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
+    setIsSaving(true);
     try {
+      const orderNumber = `ORD-${Date.now().toString().slice(-6)}`;
       await addOrder({
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
+        orderNumber,
         items,
-        totalAmount: calculateTotal(),
-        status,
+        totalAmount,
+        status, // Save explicitly as draft or confirmed
+        deliveryDate: new Date(deliveryDate),
         notes,
-        orderDate: Timestamp.fromDate(new Date(orderDate))
       });
-      setSuccess(true);
+      setShowSuccess(true);
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('navigate', { detail: 'orders' }));
       }, 1500);
-    } catch (err) {
-      setError('Failed to save order. Please try again.');
+    } catch (error) {
+      console.error('Failed to create order:', error);
+      alert("Failed to create order. Please try again.");
     } finally {
-      setLoading(false);
+      setIsSaving(false);
     }
   };
 
-  if (success) {
+  if (showSuccess) {
     return (
-      <PageContainer>
-        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-green-100 shadow-sm text-center">
-          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center text-green-600 mb-6 animate-bounce">
-            <FileCheck className="w-10 h-10" />
+      <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 p-6">
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="bg-white p-12 rounded-3xl shadow-xl text-center max-w-md w-full border border-green-100"
+        >
+          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center text-green-600 mx-auto mb-6 shadow-inner">
+            <CheckCircle2 className="w-10 h-10" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Created Successfully!</h2>
-          <p className="text-gray-500 mb-8">Redirecting you back to the order list...</p>
-        </div>
-      </PageContainer>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Created!</h2>
+          <p className="text-gray-500 font-medium">Your order has been recorded successfully. Redirecting...</p>
+        </motion.div>
+      </div>
     );
   }
 
   return (
     <PageContainer>
+      <div className="mb-6">
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'orders' }))}
+          className="flex items-center gap-2 text-gray-500 font-bold hover:text-indigo-600 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Back to Orders
+        </button>
+      </div>
+
       <PageHeader 
         title="Create New Order" 
-        subtitle="Draft a new order for your customer."
-        actions={
-          <button 
-            onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'orders' }))}
-            className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-2xl transition-all"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        }
+        subtitle="Draft a sales order to track items before generating an invoice."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          {/* Customer & Date */}
-          <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <CustomerSelector 
-                selectedCustomerId={selectedCustomer?.id} 
-                onSelect={setSelectedCustomer} 
-              />
-              <div className="space-y-1.5">
-                <label className="text-sm font-bold text-gray-700">Order Date *</label>
+          {/* Customer Selection */}
+          <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm relative">
+            <div className="flex items-center gap-2 mb-4">
+              <User className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-base font-bold text-gray-900">Customer Details</h3>
+            </div>
+            
+            {!selectedCustomer ? (
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
-                  type="date"
-                  value={orderDate}
-                  onChange={(e) => setOrderDate(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none bg-white"
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => {
+                    setCustomerSearch(e.target.value);
+                    setShowCustomerList(true);
+                  }}
+                  onFocus={() => setShowCustomerList(true)}
+                  placeholder="Search customer by name..."
+                  className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
                 />
+                
+                <AnimatePresence>
+                  {showCustomerList && customerSearch && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute z-50 left-0 right-0 mt-2 bg-white rounded-2xl border border-gray-200 shadow-xl max-h-60 overflow-y-auto"
+                    >
+                      {filteredCustomers.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500 text-sm">No customers found</div>
+                      ) : (
+                        filteredCustomers.map(customer => (
+                          <button
+                            key={customer.id}
+                            onClick={() => {
+                              setSelectedCustomer(customer);
+                              setShowCustomerList(false);
+                              setCustomerSearch(''); 
+                            }}
+                            className="w-full p-4 text-left hover:bg-indigo-50 transition-colors flex items-center justify-between border-b border-gray-50 last:border-0"
+                          >
+                            <div>
+                              <p className="font-bold text-gray-900">{customer.name}</p>
+                              <p className="text-xs text-gray-500">{customer.phone}</p>
+                            </div>
+                            <Plus className="w-4 h-4 text-indigo-600" />
+                          </button>
+                        ))
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm font-bold text-xl">
+                    {selectedCustomer.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">{selectedCustomer.name}</p>
+                    <p className="text-xs text-indigo-600 font-medium">{selectedCustomer.phone}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedCustomer(null)}
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                  title="Remove Customer"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Product Selection & Items */}
+          <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-bold text-gray-900">Line Items</h3>
+              </div>
+              <div className="relative">
+                <button 
+                  onClick={() => setShowProductList(!showProductList)}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Add Product
+                </button>
+                
+                <AnimatePresence>
+                  {showProductList && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute z-50 right-0 mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden"
+                    >
+                      <div className="p-3 border-b border-gray-100">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            autoFocus
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            placeholder="Search products..."
+                            className="w-full pl-9 pr-3 py-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto">
+                        {filteredProducts.length === 0 ? (
+                          <div className="p-4 text-center text-gray-500 text-sm">No products found</div>
+                        ) : (
+                          filteredProducts.map(product => (
+                            <button
+                              key={product.id}
+                              onClick={() => addItem(product)}
+                              className="w-full p-3 text-left hover:bg-indigo-50 transition-colors flex items-center justify-between border-b border-gray-50 last:border-0"
+                            >
+                              <div>
+                                <p className="font-bold text-gray-900 text-sm">{product.name}</p>
+                                <p className="text-xs text-gray-500">₹{product.price} / {product.unit}</p>
+                              </div>
+                              <Plus className="w-4 h-4 text-indigo-600" />
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
-          </div>
 
-          {/* Items Section */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-indigo-600" />
-                Order Items
-              </h3>
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                {items.length} Items Added
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              <AnimatePresence mode="popLayout">
-                {items.map((item, index) => (
-                  <motion.div
-                    key={`${item.productId}-${index}`}
-                    layout
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                  >
-                    <OrderItemRow 
-                      item={item} 
-                      onUpdate={(updates) => handleUpdateItem(index, updates)}
-                      onRemove={() => handleRemoveItem(index)}
-                    />
-                  </motion.div>
+            {items.length === 0 ? (
+              <div className="py-12 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <ShoppingCart className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm font-medium">No items added yet. Click 'Add Product' to begin.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {items.map((item) => (
+                  <div key={item.productId} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group gap-4">
+                    <div className="flex-1">
+                      <p className="font-bold text-gray-900 text-sm">{item.name}</p>
+                      <p className="text-xs text-gray-500 font-medium">Rate: ₹{item.rate} • GST: {item.gstRate}%</p>
+                    </div>
+                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto">
+                      <div className="flex items-center bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                        <button 
+                          onClick={() => updateItemQty(item.productId, item.qty - 1)}
+                          className="px-3 py-1.5 hover:bg-gray-50 text-gray-500 transition-colors"
+                        >
+                          -
+                        </button>
+                        <span className="px-3 py-1.5 font-bold text-gray-900 text-sm border-x border-gray-100 min-w-[2.5rem] text-center">
+                          {item.qty}
+                        </span>
+                        <button 
+                          onClick={() => updateItemQty(item.productId, item.qty + 1)}
+                          className="px-3 py-1.5 hover:bg-gray-50 text-gray-500 transition-colors"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="text-right min-w-[5rem]">
+                        <p className="font-bold text-indigo-600 text-sm">₹{item.amount.toLocaleString('en-IN')}</p>
+                      </div>
+                      <button 
+                        onClick={() => removeItem(item.productId)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all sm:opacity-0 group-hover:opacity-100 shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
-              </AnimatePresence>
-
-              <ProductSelector onSelect={handleAddProduct} />
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Notes Section */}
+          {/* Notes */}
           <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-            <label className="text-sm font-bold text-gray-700 mb-2 block">Order Notes (Optional)</label>
+            <h3 className="text-base font-bold text-gray-900 mb-4">Order Notes</h3>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add any special instructions or notes for this order..."
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none resize-none"
-              rows={3}
+              placeholder="Add shipping instructions, terms, or internal notes..."
+              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px] text-sm resize-y"
             />
           </div>
         </div>
 
-        {/* Totals & Actions */}
+        {/* Sidebar: Summary & Actions */}
         <div className="space-y-6">
-          <OrderTotals items={items} />
-
-          {error && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-sm"
-            >
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <p className="font-medium">{error}</p>
-            </motion.div>
-          )}
-
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => handleSubmit('confirmed')}
-              disabled={loading}
-              className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-              Confirm & Save Order
-            </button>
-            <button
-              onClick={() => handleSubmit('draft')}
-              disabled={loading}
-              className="w-full py-4 bg-white text-gray-700 font-bold rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-            >
-              <FileText className="w-5 h-5" />
-              Save as Draft
-            </button>
+          {/* Delivery Date Selection */}
+          <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-base font-bold text-gray-900">Delivery Date</h3>
+            </div>
+            <input
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => setDeliveryDate(e.target.value)}
+              className="w-full p-3 bg-gray-50 rounded-xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-700 cursor-pointer"
+            />
           </div>
 
-          <div className="p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100/50">
-            <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2">Quick Actions</h4>
-            <div className="space-y-2">
-              <button disabled className="w-full text-left px-4 py-2 text-sm font-medium text-gray-400 cursor-not-allowed flex items-center justify-between">
-                Convert to Estimate
-                <span className="text-[10px] bg-gray-200 px-1.5 py-0.5 rounded">SOON</span>
-              </button>
-              <button disabled className="w-full text-left px-4 py-2 text-sm font-medium text-gray-400 cursor-not-allowed flex items-center justify-between">
-                Convert to Invoice
-                <span className="text-[10px] bg-gray-200 px-1.5 py-0.5 rounded">SOON</span>
-              </button>
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center gap-2">
+                <Calculator className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-bold text-gray-900">Summary</h3>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 font-medium">Subtotal</span>
+                <span className="font-bold text-gray-900">₹{subtotal.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500 font-medium">GST Total</span>
+                <span className="font-bold text-gray-900">₹{gstTotal.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="pt-4 border-t border-dashed border-gray-200 flex items-center justify-between">
+                <span className="text-lg font-bold text-gray-900">Total</span>
+                <span className="text-2xl font-bold text-indigo-600">₹{totalAmount.toLocaleString('en-IN')}</span>
+              </div>
             </div>
           </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={() => handleSave('draft')}
+              disabled={isSaving || !selectedCustomer || items.length === 0}
+              className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+              Save as Draft Order
+            </button>
+            <button
+              onClick={() => handleSave('confirmed')}
+              disabled={isSaving || !selectedCustomer || items.length === 0}
+              className="w-full py-4 bg-white text-gray-600 font-bold rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Confirm Order
+            </button>
+          </div>
+
+          {(!selectedCustomer || items.length === 0) && (
+            <div className="p-4 bg-orange-50 border border-orange-100 rounded-2xl flex items-start gap-3 text-orange-700 text-xs">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <p className="font-medium">Please select a customer and add at least one item to save this order.</p>
+            </div>
+          )}
         </div>
       </div>
     </PageContainer>

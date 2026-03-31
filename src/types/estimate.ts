@@ -7,7 +7,7 @@ export interface Estimate extends BaseEntity {
   estimateNumber: string;
   items: OrderItem[];
   totalAmount: number;
-  status: 'draft' | 'sent' | 'accepted' | 'declined' | 'converted_to_invoice';
+  status: 'draft' | 'sent' | 'accepted' | 'declined' | 'converted_to_invoice' | 'expired';
   validUntil: any;
   notes?: string;
 }

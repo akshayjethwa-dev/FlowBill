@@ -11,7 +11,8 @@ import {
   getDoc,
   runTransaction
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { httpsCallable } from 'firebase/functions'; // ✅ Imported this
+import { db, functions } from '../firebase';       // ✅ Added functions import
 import { Invoice, Order, Estimate } from '../types';
 import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 import { activityService } from './activityService';
@@ -56,35 +57,17 @@ export const invoiceService = {
     }
   },
 
-  createInvoice: async (merchantId: string, invoiceData: Omit<Invoice, 'id' | 'merchantId' | 'createdAt'>) => {
+  // ✅ UPDATED: Now calls the Cloud Function instead of client-side Firestore
+  createInvoice: async (merchantId: string, invoiceData: any) => {
     const path = invoiceService.getInvoicesPath(merchantId);
-    const invoiceRef = doc(collection(db, path));
-    const newInvoice: Invoice = {
-      ...invoiceData,
-      id: invoiceRef.id,
-      merchantId,
-      createdAt: serverTimestamp(),
-    };
-
     try {
-      await setDoc(invoiceRef, newInvoice);
+      const createFn = httpsCallable(functions, 'createInvoice');
+      const response = await createFn(invoiceData);
       
-      // Log activity
-      await activityService.logActivity(
-        merchantId,
-        "invoice_created",
-        `Created invoice #${newInvoice.invoiceNumber} for ${newInvoice.customerName}`,
-        {
-          invoiceId: newInvoice.id,
-          invoiceNumber: newInvoice.invoiceNumber,
-          customerId: newInvoice.customerId,
-          customerName: newInvoice.customerName,
-          amount: newInvoice.totalAmount
-        }
-      );
-      
-      return newInvoice;
+      // Return the payload containing the newly generated invoiceId
+      return response.data as { invoiceId: string }; 
     } catch (error) {
+      console.error("Failed to call backend createInvoice:", error);
       handleFirestoreError(error, OperationType.CREATE, path);
       throw error;
     }
@@ -97,7 +80,6 @@ export const invoiceService = {
     try {
       await updateDoc(invoiceRef, invoiceData);
       
-      // Log activity if it's a significant update
       if (invoiceData.status || invoiceData.totalAmount) {
         const docSnap = await getDoc(invoiceRef);
         if (docSnap.exists()) {

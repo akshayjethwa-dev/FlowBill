@@ -1,86 +1,40 @@
 import React, { useState, useMemo } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useOrders } from '../hooks/useOrders';
-import { useEstimates } from '../hooks/useEstimates';
-import { useInvoices } from '../hooks/useInvoices';
-import { Plus, ShoppingBag, Search, Filter, X, Calendar, User, ArrowRight, AlertCircle, Loader2, SearchX, FileText, Receipt } from 'lucide-react';
+import { Plus, Search, Calendar, ArrowRight, AlertCircle, Loader2, SearchX, ShoppingCart, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+function OrderStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    draft: "bg-gray-100 text-gray-700",
+    confirmed: "bg-blue-100 text-blue-700",
+    processing: "bg-yellow-100 text-yellow-700",
+    completed: "bg-green-100 text-green-700",
+    cancelled: "bg-red-100 text-red-700",
+  };
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${styles[status] || styles.draft}`}>
+      {status}
+    </span>
+  );
+}
 
 export const OrderList: React.FC = () => {
   const { orders, loading, error, deleteOrder } = useOrders();
-  const { createEstimateFromOrder } = useEstimates();
-  const { createInvoice } = useInvoices();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [convertingId, setConvertingId] = useState<string | null>(null);
-
-  const handleConvertToEstimate = async (order: any) => {
-    setConvertingId(order.id);
-    try {
-      const estimate = await createEstimateFromOrder(order);
-      if (estimate) {
-        window.dispatchEvent(new CustomEvent('navigate', { detail: `estimate-detail:${estimate.id}` }));
-      }
-    } catch (err) {
-      console.error('Failed to convert order to estimate:', err);
-      alert('Failed to convert order to estimate. Please try again.');
-    } finally {
-      setConvertingId(null);
-    }
-  };
-
-  const handleConvertToInvoice = async (order: any) => {
-    setConvertingId(order.id);
-    try {
-      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 7);
-
-      const invoice = await createInvoice({
-        orderId: order.id,
-        customerId: order.customerId,
-        customerName: order.customerName,
-        invoiceNumber,
-        items: order.items,
-        totalAmount: order.totalAmount,
-        paidAmount: 0,
-        status: 'unpaid',
-        dueDate,
-        notes: order.notes || '',
-      });
-
-      if (invoice) {
-        window.dispatchEvent(new CustomEvent('navigate', { detail: `invoice-detail:${invoice.id}` }));
-      }
-    } catch (err) {
-      console.error('Failed to convert order to invoice:', err);
-      alert('Failed to convert order to invoice. Please try again.');
-    } finally {
-      setConvertingId(null);
-    }
-  };
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       const matchesSearch = 
         order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.id.toLowerCase().includes(searchQuery.toLowerCase());
+        order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesStatus = filterStatus === 'all' || order.status === filterStatus;
       
       return matchesSearch && matchesStatus;
     });
   }, [orders, searchQuery, filterStatus]);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'draft': return 'bg-gray-100 text-gray-700 border-gray-200';
-      case 'confirmed': return 'bg-indigo-50 text-indigo-700 border-indigo-100';
-      case 'converted_to_invoice': return 'bg-green-50 text-green-700 border-green-100';
-      case 'cancelled': return 'bg-red-50 text-red-700 border-red-100';
-      default: return 'bg-gray-50 text-gray-700 border-gray-100';
-    }
-  };
 
   if (loading) {
     return (
@@ -116,8 +70,8 @@ export const OrderList: React.FC = () => {
   return (
     <PageContainer>
       <PageHeader 
-        title="Orders" 
-        subtitle="Track and manage customer orders and sales."
+        title="Sales Orders" 
+        subtitle="Track draft orders, manage fulfillment, and convert to invoices."
         actions={
           <button 
             onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'create-order' }))}
@@ -137,13 +91,13 @@ export const OrderList: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by customer name or order ID..."
+              placeholder="Search by customer name or order #..."
               className="w-full pl-12 pr-4 py-4 bg-white rounded-2xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
             />
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {['all', 'draft', 'confirmed', 'converted_to_invoice', 'cancelled'].map((status) => (
+            {['all', 'draft', 'confirmed', 'processing', 'completed', 'cancelled'].map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
@@ -162,7 +116,7 @@ export const OrderList: React.FC = () => {
         {filteredOrders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-gray-200 shadow-sm text-center px-6">
             <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6">
-              {searchQuery ? <SearchX className="w-10 h-10" /> : <ShoppingBag className="w-10 h-10" />}
+              {searchQuery ? <SearchX className="w-10 h-10" /> : <ShoppingCart className="w-10 h-10" />}
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-2">
               {searchQuery ? 'No results found' : 'No orders yet'}
@@ -170,7 +124,7 @@ export const OrderList: React.FC = () => {
             <p className="text-gray-500 max-w-xs mb-8">
               {searchQuery 
                 ? `We couldn't find any orders matching "${searchQuery}". Try a different search.` 
-                : "Start taking orders from your customers. You can track their status and convert them to invoices later."}
+                : "Start by drafting your first customer order. You can confirm it and turn it into an invoice later."}
             </p>
             {!searchQuery && (
               <button 
@@ -194,59 +148,54 @@ export const OrderList: React.FC = () => {
                   className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all group"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-4 cursor-pointer flex-1" onClick={() => {/* Future: view details */}}>
                       <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 border border-indigo-100 shrink-0">
-                        <ShoppingBag className="w-6 h-6" />
+                        <ShoppingCart className="w-6 h-6" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="text-base font-bold text-gray-900 leading-tight group-hover:text-indigo-600 transition-colors">
                             {order.customerName}
                           </h3>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusColor(order.status)}`}>
-                            {order.status.toUpperCase().replace(/_/g, ' ')}
-                          </span>
+                          <OrderStatusBadge status={order.status} />
                         </div>
                         <div className="flex items-center gap-3 text-xs text-gray-500 font-medium">
                           <div className="flex items-center gap-1">
                             <Calendar className="w-3.5 h-3.5" />
-                            {order.orderDate?.toDate?.()?.toLocaleDateString() || 'No Date'}
+                            Delivery: {order.deliveryDate?.toDate?.()?.toLocaleDateString() || new Date(order.deliveryDate).toLocaleDateString()}
                           </div>
                           <div className="flex items-center gap-1">
-                            <User className="w-3.5 h-3.5" />
-                            ID: {order.id.slice(-6).toUpperCase()}
+                            <span className="font-bold text-gray-400">#</span>
+                            {order.orderNumber}
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-4 sm:pt-0">
-                      <div className="text-right mr-3">
+                    <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-4 sm:pt-0">
+                      <div className="text-right">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total Amount</p>
                         <p className="text-lg font-bold text-gray-900">₹ {order.totalAmount.toLocaleString('en-IN')}</p>
                       </div>
-                      <button 
-                        onClick={() => handleConvertToEstimate(order)}
-                        disabled={convertingId === order.id}
-                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all disabled:opacity-50"
-                        title="Convert to Estimate"
-                      >
-                        {convertingId === order.id ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
-                      </button>
-                      <button 
-                        onClick={() => handleConvertToInvoice(order)}
-                        disabled={convertingId === order.id}
-                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all disabled:opacity-50"
-                        title="Convert to Invoice"
-                      >
-                        {convertingId === order.id ? <Loader2 className="w-5 h-5 animate-spin" /> : <Receipt className="w-5 h-5" />}
-                      </button>
-                      <button 
-                        className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                        title="View Details"
-                      >
-                        <ArrowRight className="w-5 h-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => {
+                            if(window.confirm('Are you sure you want to delete this order?')) {
+                              deleteOrder(order.id);
+                            }
+                          }}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                          title="Delete Order"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                        <button 
+                          className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                          title="View Details"
+                        >
+                          <ArrowRight className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>

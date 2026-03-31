@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Invoice } from '../types';
 import { invoiceService } from '../services/invoiceService';
-import { useAuth } from './useAuth'; // ✅ correct path (not ../context/AuthContext)
+import { useAuth } from '../context/AuthContext';
 
 // ─── Input type for creating an invoice ──────────────────────────────────────
-
-type CreateInvoiceData = Omit<Invoice, 'id' | 'merchantId' | 'createdAt' | 'updatedAt'>;
+// ✅ Omit invoiceNumber, as the backend now generates it automatically
+export type CreateInvoicePayload = Omit<Invoice, 'id' | 'merchantId' | 'createdAt' | 'updatedAt' | 'invoiceNumber'>;
 
 // ─── useInvoices — list + mutations ──────────────────────────────────────────
 
@@ -33,7 +33,7 @@ export const useInvoices = () => {
     return () => unsubscribe();
   }, [user]);
 
-  const createInvoice = async (invoiceData: CreateInvoiceData) => {
+  const createInvoice = async (invoiceData: CreateInvoicePayload) => {
     if (!user) return;
     return await invoiceService.createInvoice(user.uid, invoiceData);
   };

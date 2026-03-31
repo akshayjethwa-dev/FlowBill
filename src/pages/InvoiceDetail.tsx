@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useInvoice, useInvoices } from '../hooks/useInvoices';
+import { usePayments } from '../hooks/usePayments'; // ✅ Added Payments Hook
 import { 
   ArrowLeft, 
   FileText, 
@@ -15,12 +16,10 @@ import {
   Loader2, 
   Trash2,
   CheckCircle2,
-  XCircle,
   Send,
   CreditCard,
-  History
+  Edit2
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { InvoiceStatusBadge } from '../components/invoices/InvoiceStatusBadge';
 import { AddPaymentModal } from '../components/payments/AddPaymentModal';
 
@@ -31,6 +30,8 @@ interface InvoiceDetailProps {
 export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
   const { invoice, loading, error } = useInvoice(invoiceId);
   const { updateInvoice, deleteInvoice } = useInvoices();
+  const { payments } = usePayments(); // ✅ Fetch Payments
+
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -92,6 +93,9 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
   const gstTotal = invoice.items.reduce((sum, item) => sum + (item.amount * item.gstRate / 100), 0);
   const balanceDue = invoice.totalAmount - (invoice.paidAmount || 0);
 
+  // Filter payments specifically for this invoice
+  const invoicePayments = payments.filter(p => p.invoiceId === invoiceId);
+
   return (
     <PageContainer>
       <div className="mb-6">
@@ -110,14 +114,12 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
         actions={
           <div className="flex items-center gap-2">
             <button 
-              onClick={() => {}} // Placeholder for share
               className="p-3 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-gray-200"
               title="Share Invoice"
             >
               <Share2 className="w-5 h-5" />
             </button>
             <button 
-              onClick={() => {}} // Placeholder for PDF
               className="p-3 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-gray-200"
               title="Download PDF"
             >
@@ -158,7 +160,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
                 <div className="text-right">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Created On</p>
                   <p className="text-sm font-bold text-gray-900">
-                    {invoice.createdAt?.toDate?.()?.toLocaleDateString() || new Date(invoice.createdAt).toLocaleDateString()}
+                    {invoice.createdAt?.toDate?.()?.toLocaleDateString() || new Date(invoice.createdAt || Date.now()).toLocaleDateString()}
                   </p>
                 </div>
               </div>
@@ -227,6 +229,45 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
               <p className="text-sm text-gray-600 leading-relaxed">{invoice.notes}</p>
             </div>
           )}
+
+          {/* Linked Payments Table */}
+          {invoicePayments.length > 0 && (
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden mt-8">
+              <div className="p-6 border-b border-gray-100 bg-gray-50/50">
+                <h3 className="text-base font-bold text-gray-900">Payments Received</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-gray-50">
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Method</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ref</th>
+                      <th className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {invoicePayments.map((payment) => (
+                      <tr key={payment.id}>
+                        <td className="px-6 py-4 text-sm font-bold text-gray-900">
+                          {payment.paymentDate?.toDate?.()?.toLocaleDateString() || new Date(payment.paymentDate).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-600 uppercase">
+                          {payment.method.replace('_', ' ')}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {payment.referenceNumber || '—'}
+                        </td>
+                        <td className="px-6 py-4 text-right text-sm font-bold text-green-600">
+                          ₹{payment.amount.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Sidebar Actions & Totals */}
@@ -267,17 +308,26 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
             )}
 
             {invoice.status === 'draft' && (
-              <button
-                onClick={() => handleStatusUpdate('sent')}
-                disabled={actionLoading}
-                className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-              >
-                {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                Mark as Sent
-              </button>
+              <>
+                <button
+                  onClick={() => handleStatusUpdate('sent')}
+                  disabled={actionLoading}
+                  className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                >
+                  {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                  Mark as Sent
+                </button>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: `edit-invoice:${invoice.id}` }))}
+                  className="w-full py-4 bg-white text-indigo-600 font-bold rounded-2xl border border-indigo-200 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                >
+                  <Edit2 className="w-5 h-5" />
+                  Edit Draft
+                </button>
+              </>
             )}
 
-            {balanceDue > 0 && (
+            {balanceDue > 0 && invoice.status !== 'draft' && (
               <button
                 onClick={() => setShowPaymentModal(true)}
                 disabled={actionLoading}

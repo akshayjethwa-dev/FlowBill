@@ -9,6 +9,17 @@ interface AgingSummaryCardsProps {
 }
 
 export const AgingSummaryCards: React.FC<AgingSummaryCardsProps> = ({ buckets, totalOutstanding, overdueAmount }) => {
+  // Safely handle empty buckets array when there are no invoices yet
+  const b0Amount = buckets[0]?.amount || 0;
+  const b1Amount = buckets[1]?.amount || 0;
+  const b2Amount = buckets[2]?.amount || 0;
+  const b3Amount = buckets[3]?.amount || 0;
+
+  const b0Count = buckets[0]?.count || 0;
+  const b1Count = buckets[1]?.count || 0;
+  const b2Count = buckets[2]?.count || 0;
+  const b3Count = buckets[3]?.count || 0;
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       {/* Total Outstanding */}
@@ -43,8 +54,8 @@ export const AgingSummaryCards: React.FC<AgingSummaryCardsProps> = ({ buckets, t
           </div>
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">0-60 Days</span>
         </div>
-        <h3 className="text-2xl font-bold text-gray-900">₹{(buckets[0].amount + buckets[1].amount).toLocaleString('en-IN')}</h3>
-        <p className="text-xs text-gray-400 mt-1 font-medium">{buckets[0].count + buckets[1].count} Invoices</p>
+        <h3 className="text-2xl font-bold text-gray-900">₹{(b0Amount + b1Amount).toLocaleString('en-IN')}</h3>
+        <p className="text-xs text-gray-400 mt-1 font-medium">{b0Count + b1Count} Invoices</p>
       </div>
 
       {/* Aging Breakdown (60+) */}
@@ -55,8 +66,8 @@ export const AgingSummaryCards: React.FC<AgingSummaryCardsProps> = ({ buckets, t
           </div>
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">60+ Days</span>
         </div>
-        <h3 className="text-2xl font-bold text-orange-600">₹{(buckets[2].amount + buckets[3].amount).toLocaleString('en-IN')}</h3>
-        <p className="text-xs text-orange-400 mt-1 font-medium">{buckets[2].count + buckets[3].count} Invoices</p>
+        <h3 className="text-2xl font-bold text-orange-600">₹{(b2Amount + b3Amount).toLocaleString('en-IN')}</h3>
+        <p className="text-xs text-orange-400 mt-1 font-medium">{b2Count + b3Count} Invoices</p>
       </div>
     </div>
   );

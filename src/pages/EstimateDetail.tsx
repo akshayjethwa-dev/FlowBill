@@ -7,7 +7,6 @@ import {
   Calendar, 
   User, 
   Receipt, 
-  Tag, 
   Calculator, 
   Share2, 
   FileCheck, 
@@ -18,7 +17,6 @@ import {
   XCircle,
   Send
 } from 'lucide-react';
-import { motion } from 'motion/react';
 
 interface EstimateDetailProps {
   estimateId: string;
@@ -58,10 +56,11 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({ estimateId }) =>
     if (!estimate) return;
     setActionLoading(true);
     try {
-      await convertToInvoice(estimate);
+      await convertToInvoice(estimate.id); // ✅ Pass ID to the backend function
       window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }));
     } catch (err) {
-      setActionError('Failed to convert to invoice.');
+      console.error(err);
+      setActionError('Failed to convert to invoice. Is the backend function deployed?');
       setActionLoading(false);
     }
   };
@@ -73,6 +72,7 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({ estimateId }) =>
       case 'accepted': return 'bg-green-50 text-green-700 border-green-100';
       case 'declined': return 'bg-red-50 text-red-700 border-red-100';
       case 'converted_to_invoice': return 'bg-indigo-50 text-indigo-700 border-indigo-100';
+      case 'expired': return 'bg-orange-50 text-orange-700 border-orange-100';
       default: return 'bg-gray-50 text-gray-700 border-gray-100';
     }
   };
@@ -127,7 +127,6 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({ estimateId }) =>
         actions={
           <div className="flex items-center gap-2">
             <button 
-              onClick={() => {}} // Placeholder for share
               className="p-3 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-gray-200"
               title="Share Estimate"
             >
@@ -223,6 +222,7 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({ estimateId }) =>
                         <p className="text-[10px] text-gray-400">GST: {item.gstRate}%</p>
                       </td>
                       <td className="px-6 py-4 text-center text-sm font-bold text-gray-700">{item.qty}</td>
+                      {/* ✅ Fixed Currency Symbols Below */}
                       <td className="px-6 py-4 text-right text-sm font-bold text-gray-700">₹{item.rate.toLocaleString('en-IN')}</td>
                       <td className="px-6 py-4 text-right text-sm font-bold text-indigo-600">₹{item.amount.toLocaleString('en-IN')}</td>
                     </tr>

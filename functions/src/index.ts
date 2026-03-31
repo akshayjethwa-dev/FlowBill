@@ -9,3 +9,6 @@ setGlobalOptions({region: "asia-south1"});
 export const helloFlowBill = onRequest((req, res) => {
   res.json({status: "FlowBill functions online"});
 });
+
+// ✅ Export the new invoice functions
+export * from "./invoices";

@@ -3,8 +3,7 @@ import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useInvoices } from '../hooks/useInvoices';
 import { useCustomers } from '../hooks/useCustomers';
 import { useProducts } from '../hooks/useProducts';
-import { useAuth } from '../hooks/useAuth';  
-import { Customer } from '../types';
+import { Customer, OrderItem, Product } from '../types';
 import { 
   ArrowLeft, 
   Search, 
@@ -19,14 +18,11 @@ import {
   Loader2,
   CheckCircle2
 } from 'lucide-react';
-import { OrderItem, Product } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const CreateInvoice: React.FC = () => {
-  const { user } = useAuth();
-  const merchantId = user?.uid ?? null;
   const { createInvoice } = useInvoices();    
-  const { customers } = useCustomers(merchantId);      
+  const { customers } = useCustomers();
   const { products } = useProducts();
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -70,7 +66,7 @@ export const CreateInvoice: React.FC = () => {
         name: product.name,
         qty: 1,
         rate: product.price,
-        gstRate: product.gstRate,
+        gstRate: product.gstRate || 0, // Fallback to 0 if gstRate is missing
         amount: product.price
       }]);
     }
@@ -91,29 +87,32 @@ export const CreateInvoice: React.FC = () => {
     setItems(items.filter(item => item.productId !== productId));
   };
 
-  const handleSave = async (status: 'draft' | 'sent' | 'unpaid' = 'unpaid') => {
+  const handleSave = async (status: 'draft' | 'sent' | 'unpaid' | 'partial' | 'paid' = 'unpaid') => {
     if (!selectedCustomer || items.length === 0) return;
 
     setIsSaving(true);
     try {
-      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-      await createInvoice({
+      // ✅ Removed local invoice generation! 
+      // DueDate converted to ISOString so it can safely pass through the network call to Cloud Function
+      const result = await createInvoice({
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
-        invoiceNumber,
         items,
         totalAmount,
         paidAmount: 0,
         status,
-        dueDate: new Date(dueDate),
+        dueDate: new Date(dueDate).toISOString() as any, 
         notes,
       });
+
       setShowSuccess(true);
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }));
+        // ✅ Uses backend response to navigate directly to the detailed view of the new invoice!
+        window.dispatchEvent(new CustomEvent('navigate', { detail: `invoice-detail:${result?.invoiceId || ''}` }));
       }, 1500);
     } catch (error) {
       console.error('Failed to create invoice:', error);
+      alert("Failed to create invoice. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -121,17 +120,17 @@ export const CreateInvoice: React.FC = () => {
 
   if (showSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+      <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 p-6">
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           className="bg-white p-12 rounded-3xl shadow-xl text-center max-w-md w-full border border-green-100"
         >
-          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center text-green-600 mx-auto mb-6">
+          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center text-green-600 mx-auto mb-6 shadow-inner">
             <CheckCircle2 className="w-10 h-10" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Invoice Created!</h2>
-          <p className="text-gray-500">Your invoice has been generated successfully. Redirecting to invoice list...</p>
+          <p className="text-gray-500 font-medium">Your invoice has been generated successfully. Redirecting to your invoice details...</p>
         </motion.div>
       </div>
     );
@@ -195,6 +194,7 @@ export const CreateInvoice: React.FC = () => {
                             onClick={() => {
                               setSelectedCustomer(customer);
                               setShowCustomerList(false);
+                              setCustomerSearch(''); // Clear search for next time
                             }}
                             className="w-full p-4 text-left hover:bg-indigo-50 transition-colors flex items-center justify-between border-b border-gray-50 last:border-0"
                           >
@@ -213,7 +213,7 @@ export const CreateInvoice: React.FC = () => {
             ) : (
               <div className="flex items-center justify-between p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm font-bold">
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-sm font-bold text-xl">
                     {selectedCustomer.name.charAt(0)}
                   </div>
                   <div>
@@ -223,7 +223,8 @@ export const CreateInvoice: React.FC = () => {
                 </div>
                 <button 
                   onClick={() => setSelectedCustomer(null)}
-                  className="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                  title="Remove Customer"
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
@@ -295,30 +296,30 @@ export const CreateInvoice: React.FC = () => {
             {items.length === 0 ? (
               <div className="py-12 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                 <Package className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500 text-sm">No items added yet. Search and add products above.</p>
+                <p className="text-gray-500 text-sm font-medium">No items added yet. Click 'Add Product' to begin.</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {items.map((item) => (
-                  <div key={item.productId} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group">
+                  <div key={item.productId} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 group gap-4">
                     <div className="flex-1">
                       <p className="font-bold text-gray-900 text-sm">{item.name}</p>
-                      <p className="text-xs text-gray-400">Rate: ₹{item.rate} • GST: {item.gstRate}%</p>
+                      <p className="text-xs text-gray-500 font-medium">Rate: ₹{item.rate} • GST: {item.gstRate}%</p>
                     </div>
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto">
                       <div className="flex items-center bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
                         <button 
                           onClick={() => updateItemQty(item.productId, item.qty - 1)}
-                          className="px-3 py-1 hover:bg-gray-50 text-gray-500 transition-colors"
+                          className="px-3 py-1.5 hover:bg-gray-50 text-gray-500 transition-colors"
                         >
                           -
                         </button>
-                        <span className="px-3 py-1 font-bold text-gray-900 text-sm border-x border-gray-100 min-w-10 text-center">
+                        <span className="px-3 py-1.5 font-bold text-gray-900 text-sm border-x border-gray-100 min-w-10 text-center">
                           {item.qty}
                         </span>
                         <button 
                           onClick={() => updateItemQty(item.productId, item.qty + 1)}
-                          className="px-3 py-1 hover:bg-gray-50 text-gray-500 transition-colors"
+                          className="px-3 py-1.5 hover:bg-gray-50 text-gray-500 transition-colors"
                         >
                           +
                         </button>
@@ -328,7 +329,7 @@ export const CreateInvoice: React.FC = () => {
                       </div>
                       <button 
                         onClick={() => removeItem(item.productId)}
-                        className="p-2 text-gray-400 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all sm:opacity-0 group-hover:opacity-100 shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -346,7 +347,7 @@ export const CreateInvoice: React.FC = () => {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add terms, bank details, or special instructions..."
-              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-30 text-sm"
+              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px] text-sm resize-y"
             />
           </div>
         </div>
@@ -363,7 +364,7 @@ export const CreateInvoice: React.FC = () => {
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full p-3 bg-gray-50 rounded-xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium"
+              className="w-full p-3 bg-gray-50 rounded-xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold text-gray-700 cursor-pointer"
             />
           </div>
 
@@ -394,7 +395,7 @@ export const CreateInvoice: React.FC = () => {
             <button
               onClick={() => handleSave('unpaid')}
               disabled={isSaving || !selectedCustomer || items.length === 0}
-              className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
             >
               {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
               Generate Invoice
@@ -402,7 +403,7 @@ export const CreateInvoice: React.FC = () => {
             <button
               onClick={() => handleSave('draft')}
               disabled={isSaving || !selectedCustomer || items.length === 0}
-              className="w-full py-4 bg-white text-gray-600 font-bold rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+              className="w-full py-4 bg-white text-gray-600 font-bold rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save as Draft
             </button>

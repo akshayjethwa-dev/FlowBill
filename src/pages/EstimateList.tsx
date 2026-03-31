@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useEstimates } from '../hooks/useEstimates';
-import { Plus, FileText, Search, Filter, X, Calendar, User, ArrowRight, AlertCircle, Loader2, SearchX, FileCheck } from 'lucide-react';
+import { Plus, FileText, Search, Calendar, ArrowRight, AlertCircle, Loader2, SearchX, FileCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const EstimateList: React.FC = () => {
@@ -28,6 +28,7 @@ export const EstimateList: React.FC = () => {
       case 'accepted': return 'bg-green-50 text-green-700 border-green-100';
       case 'declined': return 'bg-red-50 text-red-700 border-red-100';
       case 'converted_to_invoice': return 'bg-indigo-50 text-indigo-700 border-indigo-100';
+      case 'expired': return 'bg-orange-50 text-orange-700 border-orange-100';
       default: return 'bg-gray-50 text-gray-700 border-gray-100';
     }
   };
@@ -70,8 +71,8 @@ export const EstimateList: React.FC = () => {
         subtitle="Quotations and estimates sent to customers."
         actions={
           <button 
-            disabled
-            className="bg-gray-200 text-gray-500 px-6 py-3 rounded-2xl font-bold cursor-not-allowed flex items-center gap-2"
+            onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'create-estimate' }))}
+            className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 active:scale-95"
           >
             <Plus className="w-5 h-5" />
             <span className="hidden sm:inline">New Estimate</span>
@@ -93,7 +94,7 @@ export const EstimateList: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {['all', 'draft', 'sent', 'accepted', 'declined', 'converted_to_invoice'].map((status) => (
+            {['all', 'draft', 'sent', 'accepted', 'declined', 'converted_to_invoice', 'expired'].map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
@@ -103,7 +104,7 @@ export const EstimateList: React.FC = () => {
                     : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-600'
                 }`}
               >
-                {status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ')}
+                {status === 'converted_to_invoice' ? 'Converted' : status.charAt(0).toUpperCase() + status.slice(1)}
               </button>
             ))}
           </div>

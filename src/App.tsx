@@ -10,7 +10,8 @@ import { merchantService } from './services/merchantService';
 import { Merchant } from './types';
 
 import { DashboardHome } from './pages/DashboardHome';
-import { CustomerList } from './pages/CustomerList';
+// FIXED: Removed curly braces for default import
+import CustomerList from './pages/CustomerList'; 
 import { ProductList } from './pages/ProductList';
 import { OrderList } from './pages/OrderList';
 import { CreateOrder } from './pages/CreateOrder';

@@ -5,12 +5,13 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { auth, db, functions } from '../firebase'; // Ensure functions is imported
-import { Merchant, UserProfile } from '../types'; // Ensure UserProfile is imported
+import { auth, db, functions } from '../firebase'; 
+import { Merchant, UserProfile } from '../types'; 
 
 interface AuthContextType {
   user: User | null;
@@ -19,6 +20,7 @@ interface AuthContextType {
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
+  registerWithEmail: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -33,24 +35,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // ✅ FIX: Set the user IMMEDIATELY so the UI navigates away from the Login screen!
+        setUser(firebaseUser);
+
         try {
-          // 1. Check if custom claims exist on the current token
+          // Check if custom claims exist on the current token
           const idTokenResult = await firebaseUser.getIdTokenResult();
           
           if (!idTokenResult.claims.merchantId) {
-            // No claims = first login. Call backend to create profiles.
-            const setupUserAccount = httpsCallable(functions, 'setupUserAccount');
-            await setupUserAccount();
-
-            // Force token refresh to pick up the new claims.
-            // This will re-trigger onAuthStateChanged, so we return early here.
-            await firebaseUser.getIdToken(true);
-            return;
+            // It's a new user. We can attempt to call the backend function to set up DB docs,
+            // but we wrap it in a try/catch so it doesn't break the UI if functions aren't deployed.
+            try {
+              const setupUserAccount = httpsCallable(functions, 'setupUserAccount');
+              await setupUserAccount();
+              await firebaseUser.getIdToken(true); // Refresh token in background
+            } catch (functionError) {
+              console.warn("Backend setup function pending/failed, relying on frontend onboarding.", functionError);
+            }
           }
 
-          setUser(firebaseUser);
-
-          // 2. Fetch User Profile
+          // Fetch User Profile
           const userRef = doc(db, 'users', firebaseUser.uid);
           const userSnap = await getDoc(userRef);
           
@@ -58,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const userData = { id: userSnap.id, ...userSnap.data() } as UserProfile;
             setUserProfile(userData);
 
-            // 3. Fetch linked Merchant Profile using the merchantId from the user profile
+            // Fetch linked Merchant Profile
             const merchantRef = doc(db, 'merchants', userData.merchantId);
             const merchantSnap = await getDoc(merchantRef);
             
@@ -72,9 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setMerchantProfile(null);
           }
         } catch (error) {
-          console.error("Error setting up user account or fetching profiles", error);
-          setUserProfile(null);
-          setMerchantProfile(null);
+          console.error("Error fetching profiles", error);
         }
       } else {
         setUser(null);
@@ -96,12 +98,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await signInWithEmailAndPassword(auth, email, pass);
   };
 
+  const registerWithEmail = async (email: string, pass: string) => {
+    await createUserWithEmailAndPassword(auth, email, pass);
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, merchantProfile, loading, loginWithGoogle, loginWithEmail, logout }}>
+    <AuthContext.Provider value={{ 
+      user, userProfile, merchantProfile, loading, 
+      loginWithGoogle, loginWithEmail, registerWithEmail, logout 
+    }}>
       {children}
     </AuthContext.Provider>
   );

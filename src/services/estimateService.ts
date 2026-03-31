@@ -8,10 +8,10 @@ import {
   orderBy, 
   onSnapshot,
   serverTimestamp,
-  getDoc,
-  runTransaction
+  getDoc
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
 import { Estimate, Order, Invoice } from '../types';
 import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 
@@ -62,7 +62,7 @@ export const estimateService = {
       ...estimateData,
       id: estimateRef.id,
       merchantId,
-      createdAt: serverTimestamp(),
+      createdAt: serverTimestamp() as any,
     };
 
     try {
@@ -78,11 +78,10 @@ export const estimateService = {
     const path = estimateService.getEstimatesPath(merchantId);
     const estimateRef = doc(collection(db, path));
     
-    // Generate a simple estimate number (in production, use a counter)
     const estimateNumber = `EST-${Date.now().toString().slice(-6)}`;
     
     const validUntil = new Date();
-    validUntil.setDate(validUntil.getDate() + 15); // Valid for 15 days by default
+    validUntil.setDate(validUntil.getDate() + 15);
 
     const newEstimate: Estimate = {
       id: estimateRef.id,
@@ -96,7 +95,7 @@ export const estimateService = {
       status: 'draft',
       validUntil: validUntil,
       notes: order.notes || '',
-      createdAt: serverTimestamp(),
+      createdAt: serverTimestamp() as any,
     };
 
     try {
@@ -132,41 +131,14 @@ export const estimateService = {
     }
   },
 
-  convertToInvoice: async (merchantId: string, estimate: Estimate) => {
-    const invoicePath = `merchants/${merchantId}/invoices`;
-    const estimatePath = estimateService.getEstimatesPath(merchantId);
-    
-    const invoiceRef = doc(collection(db, invoicePath));
-    const estimateRef = doc(db, estimatePath, estimate.id);
-    
-    const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 7); // Default 7 days due
-    
-    const newInvoice: Omit<Invoice, 'id'> = {
-      merchantId,
-      orderId: estimate.orderId || '',
-      estimateId: estimate.id,
-      customerId: estimate.customerId,
-      customerName: estimate.customerName,
-      invoiceNumber,
-      items: estimate.items,
-      totalAmount: estimate.totalAmount,
-      paidAmount: 0,
-      status: 'unpaid',
-      dueDate,
-      notes: estimate.notes || '',
-      createdAt: serverTimestamp(),
-    };
-
+  // ✅ WIRED TO CLOUD FUNCTION (CONV-01)
+  convertToInvoice: async (merchantId: string, estimateId: string) => {
     try {
-      await runTransaction(db, async (transaction) => {
-        transaction.set(invoiceRef, { ...newInvoice, id: invoiceRef.id });
-        transaction.update(estimateRef, { status: 'converted_to_invoice' });
-      });
-      return { ...newInvoice, id: invoiceRef.id } as Invoice;
+      const convertFn = httpsCallable(functions, 'convertEstimateToInvoice');
+      const response = await convertFn({ merchantId, estimateId });
+      return response.data as Invoice;
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, invoicePath);
+      console.error("Failed to convert estimate to invoice via backend:", error);
       throw error;
     }
   }

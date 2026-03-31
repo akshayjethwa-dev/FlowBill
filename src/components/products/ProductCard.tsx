@@ -6,15 +6,16 @@ interface ProductCardProps {
   product: Product;
   onEdit: (product: Product) => void;
   onDelete: (id: string) => void;
+  onToggleActive: (id: string, currentStatus: boolean) => void;
 }
 
-export const ProductCard: React.FC<ProductCardProps> = ({ product, onEdit, onDelete }) => {
+export const ProductCard: React.FC<ProductCardProps> = ({ product, onEdit, onDelete, onToggleActive }) => {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all group overflow-hidden">
+    <div className={`bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all group overflow-hidden ${!product.isActive ? 'opacity-75 grayscale-[0.2]' : ''}`}>
       <div className="p-5">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 border border-indigo-100">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${product.isActive ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
               <Package className="w-6 h-6" />
             </div>
             <div>
@@ -27,14 +28,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onEdit, onDel
             </div>
           </div>
           
-          <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold border flex items-center gap-1.5 ${
-            product.isActive 
-              ? 'bg-green-50 text-green-700 border-green-100' 
-              : 'bg-gray-50 text-gray-700 border-gray-100'
-          }`}>
+          <button 
+            onClick={() => onToggleActive(product.id, product.isActive)}
+            title={`Click to mark as ${product.isActive ? 'Inactive' : 'Active'}`}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border flex items-center gap-1.5 transition-colors cursor-pointer hover:shadow-sm ${
+              product.isActive 
+                ? 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100' 
+                : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+            }`}
+          >
             {product.isActive ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
             {product.isActive ? 'ACTIVE' : 'INACTIVE'}
-          </div>
+          </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mt-4">
@@ -65,7 +70,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onEdit, onDel
           </button>
           <button 
             onClick={() => {
-              if (window.confirm('Are you sure you want to delete this product?')) {
+              if (window.confirm('Are you sure you want to completely delete this product? (Marking it inactive is recommended if it has been used in past invoices).')) {
                 onDelete(product.id);
               }
             }}

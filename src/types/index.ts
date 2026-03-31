@@ -10,3 +10,5 @@ export * from './reminder';
 export * from './activity';
 export * from './dashboard';
 export * from './ledger';
+export * from './settings';
+export * from './subscription';

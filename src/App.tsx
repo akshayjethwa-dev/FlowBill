@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './components/shared/Toast';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardLayout } from './components/layout/DashboardLayout';
@@ -25,6 +26,8 @@ import { ReminderHistoryLog } from './pages/ReminderHistoryLog';
 import { PaymentList } from './pages/PaymentList';
 import { LedgerPage } from './pages/LedgerPage';
 import ActivityLog from './pages/ActivityLog';
+import { SettingsPage } from './pages/SettingsPage';
+import { BillingPage } from './pages/BillingPage';
 
 function AppContent() {
   const { user, logout } = useAuth();
@@ -112,6 +115,10 @@ function AppContent() {
         return <LedgerPage />;
       case 'activity-log':
         return <ActivityLog />;
+      case 'settings':
+        return <SettingsPage />;
+      case 'billing':
+        return <BillingPage />;
       default:
         return (
           <PageContainer>
@@ -137,11 +144,13 @@ function AppContent() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ProtectedRoute>
-          <AppContent />
-        </ProtectedRoute>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <ProtectedRoute>
+            <AppContent />
+          </ProtectedRoute>
+        </AuthProvider>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

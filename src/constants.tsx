@@ -19,6 +19,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'reminders', label: 'Reminders', icon: Bell, href: '/reminders' },
   { id: 'activity-log', label: 'Activity Log', icon: History, href: '/activity-log' },
   { id: 'settings', label: 'Settings', icon: Settings, href: '/settings' },
+  { id: 'billing', label: 'Billing', icon: CreditCard, href: '/billing' },
 ];
 
 export const BRAND_NAME = "VyaparFlow";

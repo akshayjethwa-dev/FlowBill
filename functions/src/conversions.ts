@@ -2,6 +2,11 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { z } from "zod";
 
+// ✅ Add this safety check before calling admin.firestore()
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
 const db = admin.firestore();
 
 const convertSchema = z.object({

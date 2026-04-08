@@ -136,5 +136,29 @@ export const invoiceService = {
       handleFirestoreError(error, OperationType.UPDATE, path);
       throw error;
     }
+  },
+
+  // ✅ ADDED: Trigger PDF Generation via Cloud Functions
+  generatePdf: async (invoiceId: string) => {
+    try {
+      const generateFn = httpsCallable(functions, 'generateInvoicePdf');
+      const response = await generateFn({ invoiceId });
+      return response.data;
+    } catch (error) {
+      console.error("Failed to generate PDF:", error);
+      throw error;
+    }
+  },
+
+  // ✅ ADDED: Fetch the secure Signed URL to download/view the PDF
+  getPdfUrl: async (invoiceId: string) => {
+    try {
+      const getUrlFn = httpsCallable(functions, 'getInvoicePdfUrl');
+      const response = await getUrlFn({ invoiceId });
+      return response.data as { url: string };
+    } catch (error) {
+      console.error("Failed to get PDF URL:", error);
+      throw error;
+    }
   }
 };

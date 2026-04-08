@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useInvoice, useInvoices } from '../hooks/useInvoices';
 import { usePayments } from '../hooks/usePayments'; // ✅ Added Payments Hook
+import { invoiceService } from '../services/invoiceService'; // ✅ Added invoiceService import
 import { 
   ArrowLeft, 
   FileText, 
@@ -35,6 +36,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false); // ✅ Added PDF loading state
 
   const handleStatusUpdate = async (newStatus: any) => {
     setActionLoading(true);
@@ -57,6 +59,31 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
     } catch (err) {
       setActionError('Failed to delete invoice.');
       setActionLoading(false);
+    }
+  };
+
+  // ✅ Added PDF Download Handler
+  const handleDownloadPdf = async () => {
+    if (!invoice) return;
+    
+    setPdfLoading(true);
+    setActionError(null);
+    try {
+      // 1. Generate if it doesn't exist or needs regeneration
+      if (!invoice.pdfStoragePath) {
+        await invoiceService.generatePdf(invoiceId);
+      }
+      
+      // 2. Fetch secure Signed URL
+      const { url } = await invoiceService.getPdfUrl(invoiceId);
+      
+      // 3. Open in new tab to download/view
+      window.open(url, '_blank');
+    } catch (err) {
+      console.error("PDF Download Error:", err);
+      setActionError('Failed to prepare PDF document.');
+    } finally {
+      setPdfLoading(false);
     }
   };
 
@@ -120,10 +147,12 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
               <Share2 className="w-5 h-5" />
             </button>
             <button 
-              className="p-3 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-gray-200"
+              onClick={handleDownloadPdf}
+              disabled={pdfLoading}
+              className="p-3 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-gray-200 disabled:opacity-50"
               title="Download PDF"
             >
-              <Download className="w-5 h-5" />
+              {pdfLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
             </button>
             <button 
               onClick={handleDelete}

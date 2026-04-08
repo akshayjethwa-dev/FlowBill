@@ -12,4 +12,8 @@ export interface Invoice extends BaseEntity {
   status: 'draft' | 'sent' | 'unpaid' | 'paid' | 'partial' | 'overdue';
   dueDate: any;
   notes?: string;
+  
+  // PDF Metadata
+  pdfStoragePath?: string;
+  pdfGeneratedAt?: any;
 }

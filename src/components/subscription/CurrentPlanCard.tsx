@@ -50,7 +50,7 @@ export function CurrentPlanCard({ details, plans }: Props) {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {currentPlan.features.map((feature, i) => (
             <div key={i} className="flex items-center gap-2 text-sm text-gray-600">
-              <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
+              <CheckCircle2 size={16} className="text-green-500 shrink-0" />
               {feature}
             </div>
           ))}

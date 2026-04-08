@@ -1,107 +1,107 @@
-import { 
-  collection, 
-  doc, 
-  deleteDoc, 
-  query, 
-  orderBy, 
+import {
+  collection,
+  doc,
+  query,
+  where,
+  orderBy,
   onSnapshot,
-  getDoc,
   runTransaction,
-  increment
+  increment,
+  serverTimestamp,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db, auth } from '../firebase';
-import { Payment, Invoice } from '../types';
+import { db } from '../firebase';
+import { Payment } from '../types/payment';
+import { Invoice } from '../types/invoice';
+import { ServiceResult } from '../types/firestore';
+import { paymentConverter } from '../lib/models/converters';
+import { FSPath } from '../lib/models/paths';
 import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 
-const COLLECTION_NAME = 'payments';
+const col = (merchantId: string) =>
+  collection(db, FSPath.payments(merchantId)).withConverter(paymentConverter);
+
+export function subscribeToPayments(
+  merchantId: string,
+  callback: (payments: Payment[]) => void,
+  onError: (error: Error) => void,
+): Unsubscribe {
+  const q = query(
+    col(merchantId),
+    where('merchantId', '==', merchantId),
+    orderBy('paymentDate', 'desc'),
+  );
+  return onSnapshot(
+    q,
+    snap => callback(snap.docs.map(d => d.data())),
+    error => {
+      handleFirestoreError(error, OperationType.LIST, FSPath.payments(merchantId));
+      onError(error);
+    },
+  );
+}
+
+// Payment recording goes through backend to atomically update
+// invoice.paidAmount + invoice.status + customer.outstandingAmount
+export async function recordPayment(
+  merchantId: string,
+  paymentData: Omit<Payment, 'id' | 'merchantId' | 'createdAt' | 'updatedAt'>,
+): Promise<ServiceResult<unknown>> {
+  try {
+    const fns = getFunctions(db.app, 'asia-south1');
+    const fn = httpsCallable(fns, 'recordManualPayment');
+    const payload = {
+      ...paymentData,
+      merchantId,
+      paymentDate:
+        paymentData.paymentDate instanceof Date
+          ? paymentData.paymentDate.toISOString()
+          : paymentData.paymentDate,
+    };
+    const result = await fn(payload);
+    return { ok: true, data: result.data };
+  } catch (e: any) {
+    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message ?? 'Failed to record payment', path: FSPath.payments(merchantId), operation: 'create', raw: e } };
+  }
+}
+
+export async function deletePayment(
+  merchantId: string,
+  payment: Payment,
+): Promise<ServiceResult<void>> {
+  const path = FSPath.payment(merchantId, payment.id);
+  try {
+    await runTransaction(db, async (tx) => {
+      // 1. Reverse invoice paidAmount & status
+      if (payment.invoiceId) {
+        const invoiceRef = doc(db, FSPath.invoice(merchantId, payment.invoiceId));
+        const invoiceSnap = await tx.get(invoiceRef);
+        if (invoiceSnap.exists()) {
+          const inv = invoiceSnap.data() as Invoice;
+          const newPaidAmount = Math.max(0, (inv.paidAmount || 0) - payment.amount);
+          const newBalance = Math.max(0, inv.totalAmount - newPaidAmount);
+          let newStatus: Invoice['status'] = 'unpaid';
+          if (newPaidAmount > 0 && newPaidAmount < inv.totalAmount) newStatus = 'partial';
+          else if (newPaidAmount >= inv.totalAmount) newStatus = 'paid';
+          tx.update(invoiceRef, { paidAmount: newPaidAmount, balanceAmount: newBalance, status: newStatus, updatedAt: serverTimestamp() });
+        }
+      }
+      // 2. Reverse customer outstandingAmount
+      const customerRef = doc(db, FSPath.customer(merchantId, payment.customerId));
+      tx.update(customerRef, { outstandingAmount: increment(payment.amount), updatedAt: serverTimestamp() });
+      // 3. Delete the payment document
+      tx.delete(doc(db, path));
+    });
+    return { ok: true, data: undefined };
+  } catch (e: any) {
+    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message, path, operation: 'delete', raw: e } };
+  }
+}
 
 export const paymentService = {
-  getPaymentsPath: (merchantId: string) => `merchants/${merchantId}/${COLLECTION_NAME}`,
-
-  subscribeToPayments: (
-    merchantId: string, 
-    callback: (payments: Payment[]) => void,
-    onError: (error: any) => void
-  ) => {
-    const path = paymentService.getPaymentsPath(merchantId);
-    const q = query(collection(db, path), orderBy('paymentDate', 'desc'));
-
-    return onSnapshot(q, (snapshot) => {
-      const payments = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Payment[];
-      callback(payments);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      onError(error);
-    });
-  },
-
-  recordPayment: async (merchantId: string, paymentData: Omit<Payment, 'id' | 'merchantId' | 'createdAt'>) => {
-    try {
-      const functions = getFunctions(db.app, 'asia-south1');
-      const recordManualPayment = httpsCallable(functions, 'recordManualPayment');
-      
-      const payload = {
-        merchantId,
-        ...paymentData,
-        // Cloud functions handle ISO strings reliably over HTTP limits
-        paymentDate: paymentData.paymentDate instanceof Date ? paymentData.paymentDate.toISOString() : paymentData.paymentDate
-      };
-      
-      const result = await recordManualPayment(payload);
-      return result.data;
-    } catch (error: any) {
-      console.error("Payment recording failed:", error);
-      throw new Error(error.message || "Failed to record payment");
-    }
-  },
-
-  deletePayment: async (merchantId: string, payment: Payment) => {
-    const path = paymentService.getPaymentsPath(merchantId);
-    const paymentRef = doc(db, path, payment.id);
-
-    try {
-      await runTransaction(db, async (transaction) => {
-        // 1. Reverse invoice updates if applicable
-        if (payment.invoiceId) {
-          const invoicePath = `merchants/${merchantId}/invoices/${payment.invoiceId}`;
-          const invoiceRef = doc(db, invoicePath);
-          const invoiceSnap = await transaction.get(invoiceRef);
-
-          if (invoiceSnap.exists()) {
-            const invoice = invoiceSnap.data() as Invoice;
-            const newPaidAmount = Math.max(0, (invoice.paidAmount || 0) - payment.amount);
-            
-            let newStatus: Invoice['status'] = 'unpaid';
-            if (newPaidAmount > 0 && newPaidAmount < invoice.totalAmount) {
-              newStatus = 'partial';
-            } else if (newPaidAmount >= invoice.totalAmount) {
-              newStatus = 'paid';
-            }
-
-            transaction.update(invoiceRef, {
-              paidAmount: newPaidAmount,
-              status: newStatus
-            });
-          }
-        }
-
-        // 2. Reverse customer outstanding amount
-        const customerPath = `merchants/${merchantId}/customers/${payment.customerId}`;
-        const customerRef = doc(db, customerPath);
-        transaction.update(customerRef, {
-          outstandingAmount: increment(payment.amount)
-        });
-
-        // 3. Delete the payment record
-        transaction.delete(paymentRef);
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
-      throw error;
-    }
-  }
+  getPaymentsPath: FSPath.payments,
+  subscribeToPayments,
+  recordPayment,
+  deletePayment,
 };

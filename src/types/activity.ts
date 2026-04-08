@@ -1,37 +1,48 @@
-export type ActivityType = 
-  | 'order' 
-  | 'invoice' 
-  | 'payment' 
-  | 'customer' 
-  | 'reminder'
-  | 'invoice_created' 
-  | 'invoice_updated'
-  | 'order_created'   
+import { Timestamp, FieldValue } from 'firebase/firestore';
+
+/**
+ * Collection: /merchants/{merchantId}/activities/{activityId}
+ *
+ * REQUIRED:    id, merchantId, type, description, userId, userName
+ * OPTIONAL:    metadata
+ * IMMUTABLE:   id, merchantId, createdAt (activity logs are append-only — never update)
+ */
+export type ActivityType =
+  | 'order_created'
   | 'order_updated'
-  | 'reminder_sent' 
-  | 'payment_marked' 
+  | 'invoice_created'
+  | 'invoice_updated'
+  | 'invoice_sent'
   | 'payment_recorded'
-  | 'customer_added';
+  | 'payment_marked'
+  | 'customer_added'
+  | 'customer_updated'
+  | 'reminder_sent'
+  | 'estimate_created'
+  | 'estimate_converted'
+  | 'product_created'
+  | 'product_updated';
 
 export interface ActivityLog {
-  id: string;
-  merchantId: string;
+  readonly id: string;
+  readonly merchantId: string;    // required — ownership anchor
   type: ActivityType;
   description: string;
-  metadata: Record<string, any>;
-  userId: string;
-  userName: string;
-  createdAt: any;
+  userId: string;                 // auth UID of actor
+  userName: string;               // denormalized display name
+  metadata: Record<string, unknown>;
+  createdAt?: Timestamp | FieldValue | string;
 }
 
+/** UI display shape — constructed from ActivityLog in the service layer */
 export interface ActivityItem {
   id: string;
   type: ActivityType;
   title: string;
   subtitle: string;
-  timestamp: any;
+  timestamp: Timestamp | FieldValue | string;
   status?: string;
   description?: string;
   userName?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }

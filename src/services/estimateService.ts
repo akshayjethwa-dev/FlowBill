@@ -1,134 +1,125 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  query, 
-  where, // ✅ Added where import for archival strategy
-  orderBy, 
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  query,
+  where,
+  orderBy,
   onSnapshot,
   serverTimestamp,
-  getDoc
+  type Unsubscribe,
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions'; // ✅ Added for calling backend functions
+import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
-import { Estimate } from '../types';
+import { Estimate } from '../types/estimate';
+import { ServiceResult } from '../types/firestore';
+import { estimateConverter, withTimestamps } from '../lib/models/converters';
+import { FSPath } from '../lib/models/paths';
 import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 
-const COLLECTION_NAME = 'estimates';
+const col = (merchantId: string) =>
+  collection(db, FSPath.estimates(merchantId)).withConverter(estimateConverter);
+
+export function subscribeToEstimates(
+  merchantId: string,
+  callback: (estimates: Estimate[]) => void,
+  onError: (error: Error) => void,
+): Unsubscribe {
+  const q = query(
+    col(merchantId),
+    where('merchantId', '==', merchantId),
+    where('isArchived', '!=', true),
+    orderBy('createdAt', 'desc'),
+  );
+  return onSnapshot(
+    q,
+    snap => callback(snap.docs.map(d => d.data())),
+    error => {
+      handleFirestoreError(error, OperationType.LIST, FSPath.estimates(merchantId));
+      onError(error);
+    },
+  );
+}
+
+export async function getEstimate(
+  merchantId: string,
+  estimateId: string,
+): Promise<ServiceResult<Estimate>> {
+  const path = FSPath.estimate(merchantId, estimateId);
+  try {
+    const snap = await getDoc(doc(db, path).withConverter(estimateConverter));
+    if (!snap.exists()) {
+      return { ok: false, error: { code: 'not-found', message: 'Estimate not found', path, operation: 'get' } };
+    }
+    return { ok: true, data: snap.data() };
+  } catch (e: any) {
+    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message, path, operation: 'get', raw: e } };
+  }
+}
+
+export async function createEstimate(
+  merchantId: string,
+  estimateData: Omit<Estimate, 'id' | 'merchantId' | 'createdAt' | 'updatedAt'>,
+): Promise<ServiceResult<Estimate>> {
+  const path = FSPath.estimates(merchantId);
+  try {
+    const estimateRef = doc(col(merchantId));
+    const newEstimate = withTimestamps<Estimate>(
+      { ...estimateData, id: estimateRef.id, merchantId, isArchived: false },
+      true,
+    ) as Estimate;
+    await setDoc(estimateRef, newEstimate);
+    return { ok: true, data: newEstimate };
+  } catch (e: any) {
+    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message, path, operation: 'create', raw: e } };
+  }
+}
+
+export async function updateEstimate(
+  merchantId: string,
+  estimateId: string,
+  data: Partial<Omit<Estimate, 'id' | 'merchantId' | 'createdAt' | 'estimateNumber'>>,
+): Promise<ServiceResult<void>> {
+  const path = FSPath.estimate(merchantId, estimateId);
+  try {
+    await updateDoc(doc(db, path), { ...data, updatedAt: serverTimestamp() });
+    return { ok: true, data: undefined };
+  } catch (e: any) {
+    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message, path, operation: 'update', raw: e } };
+  }
+}
+
+export async function deleteEstimate(
+  merchantId: string,
+  estimateId: string,
+): Promise<ServiceResult<void>> {
+  return updateEstimate(merchantId, estimateId, { isArchived: true });
+}
+
+// Conversion is backend-only to generate invoiceNumber atomically.
+export async function convertToInvoice(
+  merchantId: string,
+  estimateId: string,
+): Promise<ServiceResult<{ invoiceId: string }>> {
+  try {
+    const fn = httpsCallable(functions, 'convertEstimateToInvoice');
+    const response = await fn({ sourceId: estimateId, merchantId });
+    const data = response.data as { invoiceId: string; message?: string };
+    if (data.message === 'Already converted') console.warn('Idempotency: Estimate already converted.');
+    return { ok: true, data };
+  } catch (e: any) {
+    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message, path: FSPath.estimates(merchantId), operation: 'update', raw: e } };
+  }
+}
 
 export const estimateService = {
-  getEstimatesPath: (merchantId: string) => `merchants/${merchantId}/${COLLECTION_NAME}`,
-
-  subscribeToEstimates: (
-    merchantId: string, 
-    callback: (estimates: Estimate[]) => void,
-    onError: (error: any) => void
-  ) => {
-    const path = estimateService.getEstimatesPath(merchantId);
-    
-    // ✅ Filter out archived estimates automatically
-    const q = query(
-      collection(db, path), 
-      where('isArchived', '==', false),
-      orderBy('createdAt', 'desc')
-    );
-
-    return onSnapshot(q, (snapshot) => {
-      const estimates = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Estimate[];
-      callback(estimates);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      onError(error);
-    });
-  },
-
-  getEstimate: async (merchantId: string, estimateId: string) => {
-    const path = estimateService.getEstimatesPath(merchantId);
-    const estimateRef = doc(db, path, estimateId);
-    try {
-      const docSnap = await getDoc(estimateRef);
-      if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as Estimate;
-      }
-      return null;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, path);
-      throw error;
-    }
-  },
-
-  createEstimate: async (merchantId: string, estimateData: Omit<Estimate, 'id' | 'merchantId' | 'createdAt'>) => {
-    const path = estimateService.getEstimatesPath(merchantId);
-    const estimateRef = doc(collection(db, path));
-    const newEstimate: Estimate = {
-      ...estimateData,
-      id: estimateRef.id,
-      merchantId,
-      createdAt: serverTimestamp() as any,
-      isArchived: false, // ✅ Initialize as active
-    };
-
-    try {
-      await setDoc(estimateRef, newEstimate);
-      return newEstimate;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-      throw error;
-    }
-  },
-
-  updateEstimate: async (merchantId: string, estimateId: string, estimateData: Partial<Estimate>) => {
-    const path = estimateService.getEstimatesPath(merchantId);
-    const estimateRef = doc(db, path, estimateId);
-
-    try {
-      await updateDoc(estimateRef, {
-        ...estimateData,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
-      throw error;
-    }
-  },
-
-  // ✅ Soft delete instead of hard delete
-  deleteEstimate: async (merchantId: string, estimateId: string) => {
-    const path = estimateService.getEstimatesPath(merchantId);
-    const estimateRef = doc(db, path, estimateId);
-
-    try {
-      await updateDoc(estimateRef, {
-        isArchived: true,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
-      throw error;
-    }
-  },
-
-  // ✅ UPDATED: Shifted responsibility entirely to the Server Function with Idempotency
-  convertToInvoice: async (merchantId: string, estimateId: string): Promise<string> => {
-    try {
-      const convertFn = httpsCallable(functions, 'convertEstimateToInvoice');
-      const response = await convertFn({ sourceId: estimateId });
-      
-      const data = response.data as { invoiceId: string; message?: string };
-      
-      if (data.message === 'Already converted') {
-        console.warn('Idempotency caught: Estimate was already converted.');
-      }
-      
-      return data.invoiceId;
-    } catch (error) {
-      console.error("Failed to convert estimate via backend:", error);
-      handleFirestoreError(error, OperationType.UPDATE, `merchants/${merchantId}/estimates`);
-      throw error;
-    }
-  }
+  getEstimatesPath: FSPath.estimates,
+  subscribeToEstimates,
+  getEstimate,
+  createEstimate,
+  updateEstimate,
+  deleteEstimate,
+  convertToInvoice,
 };

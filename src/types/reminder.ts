@@ -1,23 +1,46 @@
+import { Timestamp, FieldValue } from 'firebase/firestore';
 import { BaseEntity } from './common';
 
+/**
+ * Collection: /merchants/{merchantId}/reminders/{reminderId}
+ *
+ * REQUIRED:    id, merchantId, customerId, customerName, type, status, scheduledAt, message
+ * OPTIONAL:    invoiceId, invoiceNumber, sentAt, failureReason
+ * IMMUTABLE:   id, merchantId, createdAt
+ */
 export interface Reminder extends BaseEntity {
+  // Required
   customerId: string;
   customerName: string;
+  type: ReminderType;
+  status: ReminderStatus;
+  scheduledAt: Timestamp | FieldValue | string;
+  message: string;
+
+  // Optional linkage
   invoiceId?: string;
   invoiceNumber?: string;
-  type: 'payment' | 'follow_up' | 'custom' | 'manual';
-  status: 'queued' | 'upcoming' | 'overdue' | 'sent' | 'cancelled' | 'failed';
-  scheduledAt: any;
-  message: string;
+  sentAt?: Timestamp | FieldValue | string | null;
+  failureReason?: string | null;
 }
 
+export type ReminderType   = 'payment' | 'follow_up' | 'custom' | 'manual';
+export type ReminderStatus = 'queued' | 'upcoming' | 'overdue' | 'sent' | 'cancelled' | 'failed';
+
+/**
+ * Collection: /merchants/{merchantId}/reminders/{reminderId}/history/{historyId}
+ * Subcollection tracking each delivery attempt.
+ */
 export interface ReminderHistory extends BaseEntity {
-  reminderId?: string;
+  reminderId: string;             // required — link back to parent
   customerId: string;
   customerName: string;
-  type: string;
-  sentAt?: any;
-  createdAt?: any;
-  channel: 'whatsapp' | 'sms' | 'email';
-  status: 'delivered' | 'failed' | 'sent' | 'read';
+  type: ReminderType;
+  channel: ReminderChannel;
+  status: ReminderDeliveryStatus;
+  sentAt?: Timestamp | FieldValue | string | null;
+  failureReason?: string | null;
 }
+
+export type ReminderChannel        = 'whatsapp' | 'sms' | 'email';
+export type ReminderDeliveryStatus = 'delivered' | 'failed' | 'sent' | 'read';

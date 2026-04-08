@@ -12,3 +12,5 @@ export * from './dashboard';
 export * from './ledger';
 export * from './settings';
 export * from './subscription';
+export * from './whatsapp';
+export * from './firestore';

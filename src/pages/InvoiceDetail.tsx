@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useInvoice, useInvoices } from '../hooks/useInvoices';
-import { usePayments } from '../hooks/usePayments'; // ✅ Added Payments Hook
-import { invoiceService } from '../services/invoiceService'; // ✅ Added invoiceService import
+import { usePayments } from '../hooks/usePayments';
+import { invoiceService } from '../services/invoiceService';
+import { Timestamp } from 'firebase/firestore';
 import { 
   ArrowLeft, 
   FileText, 
@@ -24,6 +25,29 @@ import {
 import { InvoiceStatusBadge } from '../components/invoices/InvoiceStatusBadge';
 import { AddPaymentModal } from '../components/payments/AddPaymentModal';
 
+// ─── Utility: safely convert Firestore Timestamp | ISO string | FieldValue → Date
+// FieldValue (e.g. serverTimestamp()) can only appear before the doc is read back;
+// once read from Firestore, the field is always a Timestamp or string.
+// We guard against it defensively here so TypeScript is happy everywhere.
+
+function toDisplayDate(value: unknown): string {
+  if (!value) return '—';
+  // Firestore Timestamp
+  if (value instanceof Timestamp) {
+    return value.toDate().toLocaleDateString('en-IN');
+  }
+  // Plain object with toDate (duck-typing for Timestamp-like objects)
+  if (typeof value === 'object' && 'toDate' in (value as object)) {
+    return (value as Timestamp).toDate().toLocaleDateString('en-IN');
+  }
+  // ISO string or number
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? String(value) : d.toLocaleDateString('en-IN');
+  }
+  return '—';
+}
+
 interface InvoiceDetailProps {
   invoiceId: string;
 }
@@ -31,12 +55,12 @@ interface InvoiceDetailProps {
 export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
   const { invoice, loading, error } = useInvoice(invoiceId);
   const { updateInvoice, deleteInvoice } = useInvoices();
-  const { payments } = usePayments(); // ✅ Fetch Payments
+  const { payments } = usePayments();
 
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false); // ✅ Added PDF loading state
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const handleStatusUpdate = async (newStatus: any) => {
     setActionLoading(true);
@@ -62,25 +86,26 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
     }
   };
 
-  // ✅ Added PDF Download Handler
   const handleDownloadPdf = async () => {
     if (!invoice) return;
-    
     setPdfLoading(true);
     setActionError(null);
     try {
-      // 1. Generate if it doesn't exist or needs regeneration
+      // 1. Generate PDF if not yet generated
       if (!invoice.pdfStoragePath) {
         await invoiceService.generatePdf(invoiceId);
       }
-      
-      // 2. Fetch secure Signed URL
-      const { url } = await invoiceService.getPdfUrl(invoiceId);
-      
-      // 3. Open in new tab to download/view
-      window.open(url, '_blank');
+
+      // FIX: Access url via result.data?.url, not result.url directly
+      // getPdfUrl returns ServiceResult<{ url: string }>, not { url: string }
+      const result = await invoiceService.getPdfUrl(invoiceId);
+      if (!result.ok || !result.data?.url) {
+        throw new Error(result.error?.message ?? 'Failed to get PDF URL');
+      }
+
+      window.open(result.data.url, '_blank');
     } catch (err) {
-      console.error("PDF Download Error:", err);
+      console.error('PDF Download Error:', err);
       setActionError('Failed to prepare PDF document.');
     } finally {
       setPdfLoading(false);
@@ -119,8 +144,6 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
   const subtotal = invoice.items.reduce((sum, item) => sum + item.amount, 0);
   const gstTotal = invoice.items.reduce((sum, item) => sum + (item.amount * item.gstRate / 100), 0);
   const balanceDue = invoice.totalAmount - (invoice.paidAmount || 0);
-
-  // Filter payments specifically for this invoice
   const invoicePayments = payments.filter(p => p.invoiceId === invoiceId);
 
   return (
@@ -182,14 +205,15 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
               <div className="flex items-center gap-6">
                 <div className="text-right">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Due Date</p>
+                  {/* FIX: Use toDisplayDate — handles Timestamp | string | FieldValue safely */}
                   <p className={`text-sm font-bold ${invoice.status === 'overdue' ? 'text-red-600' : 'text-gray-900'}`}>
-                    {invoice.dueDate?.toDate?.()?.toLocaleDateString() || new Date(invoice.dueDate).toLocaleDateString()}
+                    {toDisplayDate(invoice.dueDate)}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Created On</p>
                   <p className="text-sm font-bold text-gray-900">
-                    {invoice.createdAt?.toDate?.()?.toLocaleDateString() || new Date(invoice.createdAt || Date.now()).toLocaleDateString()}
+                    {toDisplayDate(invoice.createdAt)}
                   </p>
                 </div>
               </div>
@@ -278,8 +302,9 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
                   <tbody className="divide-y divide-gray-50">
                     {invoicePayments.map((payment) => (
                       <tr key={payment.id}>
+                        {/* FIX: toDisplayDate handles paymentDate Timestamp | string | FieldValue */}
                         <td className="px-6 py-4 text-sm font-bold text-gray-900">
-                          {payment.paymentDate?.toDate?.()?.toLocaleDateString() || new Date(payment.paymentDate).toLocaleDateString()}
+                          {toDisplayDate(payment.paymentDate)}
                         </td>
                         <td className="px-6 py-4 text-sm font-medium text-gray-600 uppercase">
                           {payment.method.replace('_', ' ')}
@@ -301,7 +326,6 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
 
         {/* Sidebar Actions & Totals */}
         <div className="space-y-6">
-          {/* Payment Status Card */}
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-2">
@@ -327,7 +351,6 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="space-y-3">
             {actionError && (
               <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-xs">
@@ -348,7 +371,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
                 </button>
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: `edit-invoice:${invoice.id}` }))}
-                  className="w-full py-4 bg-white text-indigo-600 font-bold rounded-2xl border border-indigo-200 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                  className="w-full py-4 bg-white text-indigo-600 font-bold rounded-2xl border border-indigo-200 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 active:scale-95"
                 >
                   <Edit2 className="w-5 h-5" />
                   Edit Draft

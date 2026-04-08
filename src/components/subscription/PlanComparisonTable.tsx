@@ -17,7 +17,7 @@ export function PlanComparisonTable({ plans, currentPlanId, onUpgrade }: Props) 
     <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm overflow-x-auto">
       <h3 className="text-lg font-bold text-gray-900 mb-6">Compare Plans</h3>
       
-      <table className="w-full text-left border-collapse min-w-[600px]">
+      <table className="w-full text-left border-collapse min-w-150">
         <thead>
           <tr className="border-b border-gray-100">
             <th className="py-4 px-4 text-sm font-bold text-gray-400 uppercase tracking-wider">Features</th>

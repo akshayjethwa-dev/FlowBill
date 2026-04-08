@@ -22,7 +22,6 @@ export const CreateOrder: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Search states
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [showCustomerList, setShowCustomerList] = useState(false);
@@ -89,8 +88,9 @@ export const CreateOrder: React.FC = () => {
         orderNumber,
         items,
         totalAmount,
-        status, // Save explicitly as draft or confirmed
-        deliveryDate: new Date(deliveryDate),
+        status,
+        // FIX: Pass ISO string — Firestore type accepts string | Timestamp | FieldValue, not JS Date
+        deliveryDate: new Date(deliveryDate).toISOString(),
         notes,
       });
       setShowSuccess(true);
@@ -99,7 +99,7 @@ export const CreateOrder: React.FC = () => {
       }, 1500);
     } catch (error) {
       console.error('Failed to create order:', error);
-      alert("Failed to create order. Please try again.");
+      alert('Failed to create order. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -301,7 +301,7 @@ export const CreateOrder: React.FC = () => {
                         >
                           -
                         </button>
-                        <span className="px-3 py-1.5 font-bold text-gray-900 text-sm border-x border-gray-100 min-w-[2.5rem] text-center">
+                        <span className="px-3 py-1.5 font-bold text-gray-900 text-sm border-x border-gray-100 min-w-10 text-center">
                           {item.qty}
                         </span>
                         <button 
@@ -311,7 +311,7 @@ export const CreateOrder: React.FC = () => {
                           +
                         </button>
                       </div>
-                      <div className="text-right min-w-[5rem]">
+                      <div className="text-right min-w-20">
                         <p className="font-bold text-indigo-600 text-sm">₹{item.amount.toLocaleString('en-IN')}</p>
                       </div>
                       <button 
@@ -334,14 +334,13 @@ export const CreateOrder: React.FC = () => {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add shipping instructions, terms, or internal notes..."
-              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px] text-sm resize-y"
+              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-30 text-sm resize-y"
             />
           </div>
         </div>
 
         {/* Sidebar: Summary & Actions */}
         <div className="space-y-6">
-          {/* Delivery Date Selection */}
           <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Calendar className="w-5 h-5 text-indigo-600" />

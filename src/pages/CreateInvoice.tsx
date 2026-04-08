@@ -32,7 +32,6 @@ export const CreateInvoice: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // Search states
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [showCustomerList, setShowCustomerList] = useState(false);
@@ -66,7 +65,7 @@ export const CreateInvoice: React.FC = () => {
         name: product.name,
         qty: 1,
         rate: product.price,
-        gstRate: product.gstRate || 0, // Fallback to 0 if gstRate is missing
+        gstRate: product.gstRate || 0,
         amount: product.price
       }]);
     }
@@ -92,27 +91,29 @@ export const CreateInvoice: React.FC = () => {
 
     setIsSaving(true);
     try {
-      // ✅ Removed local invoice generation! 
-      // DueDate converted to ISOString so it can safely pass through the network call to Cloud Function
+      // FIX 1: Added balanceAmount (= totalAmount since paidAmount is 0 on creation)
+      // FIX 2: dueDate passed as ISO string — Cloud Function handles it reliably
       const result = await createInvoice({
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
         items,
         totalAmount,
         paidAmount: 0,
+        balanceAmount: totalAmount, // ✅ FIX 1: required field added
         status,
-        dueDate: new Date(dueDate).toISOString() as any, 
+        dueDate: new Date(dueDate).toISOString(),
         notes,
       });
 
       setShowSuccess(true);
       setTimeout(() => {
-        // ✅ Uses backend response to navigate directly to the detailed view of the new invoice!
-        window.dispatchEvent(new CustomEvent('navigate', { detail: `invoice-detail:${result?.invoiceId || ''}` }));
+        // FIX 2: Safely access invoiceId from result.data, not result directly
+        const invoiceId = result?.data?.invoiceId ?? '';
+        window.dispatchEvent(new CustomEvent('navigate', { detail: `invoice-detail:${invoiceId}` }));
       }, 1500);
     } catch (error) {
       console.error('Failed to create invoice:', error);
-      alert("Failed to create invoice. Please try again.");
+      alert('Failed to create invoice. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -194,7 +195,7 @@ export const CreateInvoice: React.FC = () => {
                             onClick={() => {
                               setSelectedCustomer(customer);
                               setShowCustomerList(false);
-                              setCustomerSearch(''); // Clear search for next time
+                              setCustomerSearch('');
                             }}
                             className="w-full p-4 text-left hover:bg-indigo-50 transition-colors flex items-center justify-between border-b border-gray-50 last:border-0"
                           >
@@ -347,7 +348,7 @@ export const CreateInvoice: React.FC = () => {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add terms, bank details, or special instructions..."
-              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-[120px] text-sm resize-y"
+              className="w-full p-4 bg-gray-50 rounded-2xl border border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none min-h-30 text-sm resize-y"
             />
           </div>
         </div>

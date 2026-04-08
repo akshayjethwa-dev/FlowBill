@@ -48,7 +48,7 @@ export function SubscriptionSection({ plans, currentPlanId, onUpgrade }: Props) 
             <ul className="mt-4 space-y-2">
               {plan.features.map((feature, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
-                  <Check size={12} className="text-green-500 mt-0.5 flex-shrink-0" />
+                  <Check size={12} className="text-green-500 mt-0.5 shrink-0" />
                   {feature}
                 </li>
               ))}

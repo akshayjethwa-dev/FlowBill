@@ -1,151 +1,66 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  orderBy, 
-  onSnapshot,
-  serverTimestamp,
-  addDoc
-} from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Reminder, ReminderHistory } from '../types';
-import { handleFirestoreError, OperationType } from '../utils/firestore-error';
-import { activityService } from './activityService';
+import type { Customer } from '../types/customer';
 
-const REMINDERS_COLLECTION = 'reminderJobs';
-const HISTORY_COLLECTION = 'whatsappMessages';
-
-export const reminderService = {
-  getRemindersPath: (merchantId: string) => `merchants/${merchantId}/${REMINDERS_COLLECTION}`,
-  getHistoryPath: (merchantId: string) => `merchants/${merchantId}/${HISTORY_COLLECTION}`,
-
-  subscribeToReminders: (
-    merchantId: string, 
-    callback: (reminders: Reminder[]) => void,
-    onError: (error: any) => void
-  ) => {
-    const path = reminderService.getRemindersPath(merchantId);
-    // Ordered by scheduledAt based on requirements
-    const q = query(collection(db, path), orderBy('scheduledAt', 'asc'));
-
-    return onSnapshot(q, (snapshot) => {
-      const reminders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Reminder[];
-      callback(reminders);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      onError(error);
-    });
-  },
-
-  createReminder: async (merchantId: string, reminderData: Omit<Reminder, 'id' | 'merchantId' | 'createdAt'>) => {
-    const path = reminderService.getRemindersPath(merchantId);
-    const reminderRef = doc(collection(db, path));
-    const newReminder: Reminder = {
-      ...reminderData,
-      id: reminderRef.id,
-      merchantId,
-      createdAt: serverTimestamp(),
-    };
-
-    try {
-      await setDoc(reminderRef, newReminder);
-      return newReminder;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
-      throw error;
-    }
-  },
-
-  updateReminder: async (merchantId: string, reminderId: string, reminderData: Partial<Reminder>) => {
-    const path = reminderService.getRemindersPath(merchantId);
-    const reminderRef = doc(db, path, reminderId);
-
-    try {
-      await updateDoc(reminderRef, reminderData);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, path);
-      throw error;
-    }
-  },
-
-  deleteReminder: async (merchantId: string, reminderId: string) => {
-    const path = reminderService.getRemindersPath(merchantId);
-    const reminderRef = doc(db, path, reminderId);
-
-    try {
-      await deleteDoc(reminderRef);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, path);
-      throw error;
-    }
-  },
-
-  sendReminder: async (merchantId: string, reminder: Reminder, channel: 'whatsapp' | 'sms' | 'email' = 'whatsapp') => {
-    const historyPath = reminderService.getHistoryPath(merchantId);
-    
-    try {
-      const historyEntry: Omit<ReminderHistory, 'id'> = {
-        merchantId,
-        reminderId: reminder.id,
-        customerId: reminder.customerId,
-        customerName: reminder.customerName,
-        type: reminder.type,
-        createdAt: serverTimestamp(),
-        sentAt: serverTimestamp(),
-        channel,
-        status: 'sent'
-      };
-
-      await addDoc(collection(db, historyPath), historyEntry);
-      
-      // Log activity
-      await activityService.logActivity(
-        merchantId,
-        "reminder_sent",
-        `Sent ${reminder.type} reminder to ${reminder.customerName} via ${channel}`,
-        {
-          reminderId: reminder.id,
-          customerId: reminder.customerId,
-          customerName: reminder.customerName,
-          type: reminder.type,
-          channel
-        }
-      );
-      
-      // Update reminder status
-      await reminderService.updateReminder(merchantId, reminder.id, { status: 'sent' });
-      
-      return true;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, historyPath);
-      throw error;
-    }
-  },
-
-  subscribeToHistory: (
-    merchantId: string, 
-    callback: (history: ReminderHistory[]) => void,
-    onError: (error: any) => void
-  ) => {
-    const path = reminderService.getHistoryPath(merchantId);
-    // Ordered by createdAt (or sentAt)
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
-
-    return onSnapshot(q, (snapshot) => {
-      const history = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as ReminderHistory[];
-      callback(history);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-      onError(error);
-    });
-  }
+type UpsertCustomerInput = Partial<Customer> & {
+  merchantId: string;
+  name: string;
 };
+
+function normalizeWhatsappNumber(value?: string | null): string | null {
+  if (!value) return null;
+  return value.replace(/\s+/g, '').replace(/^\+/, '');
+}
+
+function buildCustomerPayload(input: UpsertCustomerInput) {
+  return {
+    merchantId: input.merchantId,
+    name: input.name.trim(),
+    phone: input.phone?.trim() ?? '',
+    email: input.email?.trim() ?? '',
+    address: input.address?.trim() ?? '',
+
+    whatsappNumber: normalizeWhatsappNumber(
+      input.whatsappNumber ?? input.phone ?? null
+    ),
+    whatsappOptIn: input.whatsappOptIn ?? false,
+    whatsappOptedOutAt: input.whatsappOptedOutAt ?? null,
+
+    updatedAt: serverTimestamp(),
+  };
+}
+
+export async function createCustomer(input: UpsertCustomerInput) {
+  const payload = {
+    ...buildCustomerPayload(input),
+    createdAt: serverTimestamp(),
+  };
+
+  const ref = await addDoc(
+    collection(db, 'merchants', input.merchantId, 'customers'),
+    payload
+  );
+
+  return ref.id;
+}
+
+export async function updateCustomer(customerId: string, input: UpsertCustomerInput) {
+  const ref = doc(db, 'merchants', input.merchantId, 'customers', customerId);
+  await updateDoc(ref, buildCustomerPayload(input));
+}
+
+export async function setCustomerWhatsappConsent(params: {
+  merchantId: string;
+  customerId: string;
+  whatsappOptIn: boolean;
+  whatsappNumber?: string | null;
+}) {
+  const ref = doc(db, 'merchants', params.merchantId, 'customers', params.customerId);
+
+  await updateDoc(ref, {
+    whatsappOptIn: params.whatsappOptIn,
+    whatsappNumber: normalizeWhatsappNumber(params.whatsappNumber ?? null),
+    whatsappOptedOutAt: params.whatsappOptIn ? null : serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}

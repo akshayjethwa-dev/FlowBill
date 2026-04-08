@@ -16,6 +16,10 @@ export const helloFlowBill = onRequest((req, res) => {
 // ✅ Export ONLY Firebase triggers
 export * from "./invoices";
 export * from "./payments";
-// ❌ whatsapp.ts is REMOVED from here. It should only be imported where used.
+
 export * from "./reminders";
 export * from "./conversions";
+
+export { gupshupWhatsappWebhook } from './whatsappWebhook';
+export * from './whatsappConfig';
+export * from './whatsappTemplates';

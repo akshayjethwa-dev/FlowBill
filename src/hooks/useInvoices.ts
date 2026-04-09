@@ -49,10 +49,6 @@ export const useInvoices = () => {
     return await invoiceService.updateInvoice(user.uid, invoiceId, invoiceData);
   };
 
-  // FIX: old code called invoiceService.deleteInvoice which does NOT exist.
-  // The correct method name is archiveInvoice (soft-delete via isArchived flag).
-  // This was the root cause — TypeScript resolves the namespace object without
-  // deleteInvoice, so markAsPaid also appeared "missing" in the error message.
   const deleteInvoice = async (invoiceId: string) => {
     if (!user) return;
     return await invoiceService.archiveInvoice(user.uid, invoiceId);
@@ -60,7 +56,22 @@ export const useInvoices = () => {
 
   const markAsPaid = async (invoiceId: string, amount?: number) => {
     if (!user) return;
-    return await invoiceService.markAsPaid(user.uid, invoiceId, amount);
+    
+    // Find the invoice in local state to get required customer details
+    const inv = invoices.find(i => i.id === invoiceId);
+    if (!inv) return;
+
+    // FIX: Changed balanceDue to balanceAmount to match Invoice type definition
+    return await invoiceService.recordManualPayment({
+      merchantId: user.uid,
+      invoiceId: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      customerId: inv.customerId,
+      customerName: inv.customerName,
+      amount: amount ?? inv.balanceAmount, 
+      method: 'Manual',
+      paymentDate: new Date().toISOString(),
+    });
   };
 
   return {
@@ -90,8 +101,6 @@ export const useInvoice = (invoiceId: string | undefined) => {
 
     const fetchInvoice = async () => {
       try {
-        // FIX: getInvoice now returns ServiceResult<Invoice> (after our backend update).
-        // Must unwrap .data before calling setInvoice — passing the raw result caused E4.
         const result = await invoiceService.getInvoice(user.uid, invoiceId);
         if (result.ok) {
           setInvoice(result.data);

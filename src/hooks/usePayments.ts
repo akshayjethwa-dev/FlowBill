@@ -27,14 +27,15 @@ export const usePayments = () => {
     return () => unsubscribe();
   }, [user]);
 
-  const recordPayment = async (paymentData: Omit<Payment, 'id' | 'merchantId' | 'createdAt'>) => {
+  const recordPayment = async (paymentData: Omit<Payment, 'id' | 'merchantId' | 'createdAt' | 'updatedAt'>) => {
     if (!user) return;
     return await paymentService.recordPayment(user.uid, paymentData);
   };
 
   const deletePayment = async (payment: Payment) => {
     if (!user) return;
-    return await paymentService.deletePayment(user.uid, payment);
+    // FIX: service now expects paymentId string, not the full object
+    return await paymentService.deletePayment(user.uid, payment.id);
   };
 
   return { 

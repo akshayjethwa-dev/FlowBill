@@ -1,3 +1,4 @@
+// src/types/reminder.ts
 import { Timestamp, FieldValue } from 'firebase/firestore';
 import { BaseEntity } from './common';
 
@@ -44,3 +45,6 @@ export interface ReminderHistory extends BaseEntity {
 
 export type ReminderChannel        = 'whatsapp' | 'sms' | 'email';
 export type ReminderDeliveryStatus = 'delivered' | 'failed' | 'sent' | 'read';
+
+// ─── Job scheduling types (live in reminderJob.ts, re-exported here for convenience) ───
+export type { ReminderStage, ReminderJobStatus, ReminderJob, ReminderJobSummary } from './reminderJob';

@@ -14,3 +14,4 @@ export * from './settings';
 export * from './subscription';
 export * from './whatsapp';
 export * from './firestore';
+export * from './reminderJob';

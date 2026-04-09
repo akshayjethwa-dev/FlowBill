@@ -57,6 +57,16 @@
     },
 
     {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status",     "order": "ASCENDING" },
+        { "fieldPath": "isArchived", "order": "ASCENDING" },
+        { "fieldPath": "dueDate",    "order": "ASCENDING" }
+      ]
+    },
+
+    {
       "collectionGroup": "orders",
       "queryScope": "COLLECTION",
       "fields": [
@@ -210,6 +220,16 @@
       "fields": [
         { "fieldPath": "merchantId",  "order": "ASCENDING" },
         { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "scheduledAt", "order": "ASCENDING" },
+        { "fieldPath": "nextRetryAt", "order": "ASCENDING" }
+      ]
+    },
+
+    {
+      "collectionGroup": "reminderJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "invoiceId",   "order": "ASCENDING" },
         { "fieldPath": "scheduledAt", "order": "ASCENDING" }
       ]
     },

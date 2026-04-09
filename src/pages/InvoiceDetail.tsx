@@ -3,24 +3,25 @@ import { PageContainer, PageHeader } from '../components/layout/PageContainer';
 import { useInvoice, useInvoices } from '../hooks/useInvoices';
 import { usePayments } from '../hooks/usePayments';
 import { invoiceService } from '../services/invoiceService';
+import { useAuth } from '../context/AuthContext';
 import { Timestamp } from 'firebase/firestore';
-import { 
-  ArrowLeft, 
-  FileText, 
-  Calendar, 
-  User, 
-  Receipt, 
-  Tag, 
-  Calculator, 
-  Share2, 
-  Download, 
-  AlertCircle, 
-  Loader2, 
+import {
+  ArrowLeft,
+  FileText,
+  Calendar,
+  User,
+  Receipt,
+  Tag,
+  Calculator,
+  Share2,
+  Download,
+  AlertCircle,
+  Loader2,
   Trash2,
   CheckCircle2,
   Send,
   CreditCard,
-  Edit2
+  Edit2,
 } from 'lucide-react';
 import { InvoiceStatusBadge } from '../components/invoices/InvoiceStatusBadge';
 import { AddPaymentModal } from '../components/payments/AddPaymentModal';
@@ -53,6 +54,7 @@ interface InvoiceDetailProps {
 }
 
 export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
+  const { user } = useAuth();
   const { invoice, loading, error } = useInvoice(invoiceId);
   const { updateInvoice, deleteInvoice } = useInvoices();
   const { payments } = usePayments();
@@ -60,8 +62,15 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
 
+  // ── PDF State ──────────────────────────────────────────────────────────────
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  // Tracks whether PDF was generated in this session (so we can switch button label)
+  const [pdfJustGenerated, setPdfJustGenerated] = useState(false);
+
+  // ── Status update ──────────────────────────────────────────────────────────
   const handleStatusUpdate = async (newStatus: any) => {
     setActionLoading(true);
     setActionError(null);
@@ -74,6 +83,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
     }
   };
 
+  // ── Delete invoice ─────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!window.confirm('Are you sure you want to delete this invoice?')) return;
     setActionLoading(true);
@@ -86,32 +96,58 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
     }
   };
 
-  const handleDownloadPdf = async () => {
-    if (!invoice) return;
-    setPdfLoading(true);
-    setActionError(null);
+  // ── Generate PDF (calls Cloud Function generateInvoicePdf) ─────────────────
+  // Uses invoiceService.generatePdf (already defined in invoiceService.ts).
+  // After generating, immediately fetches a signed URL and opens it.
+  const handleGeneratePdf = async () => {
+    if (!invoice || !user) return;
+    setPdfGenerating(true);
+    setPdfError(null);
     try {
-      // 1. Generate PDF if not yet generated
-      if (!invoice.pdfStoragePath) {
-        await invoiceService.generatePdf(invoiceId);
+      // Step 1: Generate PDF via Cloud Function → writes to Storage + updates invoice doc
+      const genResult = await invoiceService.generatePdf(invoiceId);
+      if (!genResult.ok) {
+        throw new Error(genResult.error?.message ?? 'PDF generation failed.');
       }
 
-      // FIX: Access url via result.data?.url, not result.url directly
-      // getPdfUrl returns ServiceResult<{ url: string }>, not { url: string }
-      const result = await invoiceService.getPdfUrl(invoiceId);
-      if (!result.ok || !result.data?.url) {
-        throw new Error(result.error?.message ?? 'Failed to get PDF URL');
+      // Step 2: Immediately fetch a 1-hour signed URL and open it
+      const urlResult = await invoiceService.getPdfUrl(invoiceId);
+      if (!urlResult.ok || !urlResult.data?.url) {
+        throw new Error(urlResult.error?.message ?? 'Failed to get download URL.');
       }
 
-      window.open(result.data.url, '_blank');
-    } catch (err) {
-      console.error('PDF Download Error:', err);
-      setActionError('Failed to prepare PDF document.');
+      window.open(urlResult.data.url, '_blank', 'noopener,noreferrer');
+      setPdfJustGenerated(true);
+    } catch (err: any) {
+      console.error('[PDF] Generate error:', err);
+      setPdfError(err?.message ?? 'Failed to generate PDF.');
     } finally {
-      setPdfLoading(false);
+      setPdfGenerating(false);
     }
   };
 
+  // ── Download existing PDF (calls Cloud Function getInvoicePdfUrl) ───────────
+  // Only shown when invoice.pdfStoragePath is set (PDF already generated).
+  // Gets a fresh 1-hour signed URL each time.
+  const handleDownloadPdf = async () => {
+    if (!invoice || !user) return;
+    setPdfDownloading(true);
+    setPdfError(null);
+    try {
+      const result = await invoiceService.getPdfUrl(invoiceId);
+      if (!result.ok || !result.data?.url) {
+        throw new Error(result.error?.message ?? 'Failed to get PDF download URL.');
+      }
+      window.open(result.data.url, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      console.error('[PDF] Download error:', err);
+      setPdfError(err?.message ?? 'Failed to download PDF.');
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
+  // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
     return (
       <PageContainer>
@@ -123,6 +159,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
     );
   }
 
+  // ── Error / Not Found ──────────────────────────────────────────────────────
   if (error || !invoice) {
     return (
       <PageContainer>
@@ -130,7 +167,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
           <AlertCircle className="w-12 h-12 text-red-600 mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">Invoice not found</h2>
           <p className="text-gray-500 mb-6">{error || 'The invoice you are looking for does not exist.'}</p>
-          <button 
+          <button
             onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
             className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl"
           >
@@ -141,15 +178,16 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
     );
   }
 
-  const subtotal = invoice.items.reduce((sum, item) => sum + item.amount, 0);
-  const gstTotal = invoice.items.reduce((sum, item) => sum + (item.amount * item.gstRate / 100), 0);
   const balanceDue = invoice.totalAmount - (invoice.paidAmount || 0);
   const invoicePayments = payments.filter(p => p.invoiceId === invoiceId);
+
+  // Whether to show "Download PDF" button — true if PDF exists in Storage OR was just generated
+  const hasPdf = !!invoice.pdfStoragePath || pdfJustGenerated;
 
   return (
     <PageContainer>
       <div className="mb-6">
-        <button 
+        <button
           onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'invoices' }))}
           className="flex items-center gap-2 text-gray-500 font-bold hover:text-indigo-600 transition-colors"
         >
@@ -158,26 +196,57 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
         </button>
       </div>
 
-      <PageHeader 
-        title={invoice.invoiceNumber} 
+      <PageHeader
+        title={invoice.invoiceNumber}
         subtitle={`Invoice for ${invoice.customerName}`}
         actions={
-          <div className="flex items-center gap-2">
-            <button 
+          <div className="flex items-center gap-2 flex-wrap">
+
+            {/* ── Share (placeholder) ─────────────────────────────────── */}
+            <button
               className="p-3 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-gray-200"
               title="Share Invoice"
             >
               <Share2 className="w-5 h-5" />
             </button>
-            <button 
-              onClick={handleDownloadPdf}
-              disabled={pdfLoading}
-              className="p-3 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all border border-gray-200 disabled:opacity-50"
-              title="Download PDF"
+
+            {/* ── Download existing PDF ───────────────────────────────── */}
+            {hasPdf && (
+              <button
+                onClick={handleDownloadPdf}
+                disabled={pdfDownloading || pdfGenerating}
+                className="flex items-center gap-2 px-4 py-2.5 border border-indigo-200 text-indigo-700
+                           font-bold rounded-2xl hover:bg-indigo-50 transition-all
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Download PDF"
+              >
+                {pdfDownloading
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Download className="w-4 h-4" />}
+                <span className="hidden sm:inline">Download PDF</span>
+              </button>
+            )}
+
+            {/* ── Generate PDF (or Regenerate) ────────────────────────── */}
+            <button
+              onClick={handleGeneratePdf}
+              disabled={pdfGenerating || pdfDownloading}
+              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white
+                         font-bold rounded-2xl hover:bg-indigo-700 transition-all
+                         shadow-lg shadow-indigo-100 active:scale-95
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+              title={hasPdf ? 'Regenerate PDF' : 'Generate PDF'}
             >
-              {pdfLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+              {pdfGenerating
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <FileText className="w-4 h-4" />}
+              <span className="hidden sm:inline">
+                {hasPdf ? 'Regenerate PDF' : 'Generate PDF'}
+              </span>
             </button>
-            <button 
+
+            {/* ── Delete ──────────────────────────────────────────────── */}
+            <button
               onClick={handleDelete}
               className="p-3 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all border border-gray-200"
               title="Delete Invoice"
@@ -188,9 +257,43 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
         }
       />
 
+      {/* ── PDF Error Banner ───────────────────────────────────────────────── */}
+      {pdfError && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-700 text-xs">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">PDF Error</p>
+            <p className="font-medium mt-0.5">{pdfError}</p>
+          </div>
+          <button
+            onClick={() => setPdfError(null)}
+            className="ml-auto text-red-400 hover:text-red-600 font-bold text-sm"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── PDF Generated Success Banner ───────────────────────────────────── */}
+      {pdfJustGenerated && !pdfError && (
+        <div className="mb-4 p-4 bg-green-50 border border-green-100 rounded-2xl flex items-center gap-3 text-green-700 text-xs">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <p className="font-medium">
+            PDF generated successfully! Use <strong>Download PDF</strong> to get it again anytime.
+          </p>
+          <button
+            onClick={() => setPdfJustGenerated(false)}
+            className="ml-auto text-green-400 hover:text-green-600 font-bold text-sm"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          {/* Status & Info Card */}
+
+          {/* ── Status & Info Card ─────────────────────────────────────────── */}
           <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
@@ -202,10 +305,20 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
                   <InvoiceStatusBadge status={invoice.status} />
                 </div>
               </div>
+
+              {/* PDF generation timestamp */}
+              {invoice.pdfGeneratedAt && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl">
+                  <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                  <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                    PDF · {toDisplayDate(invoice.pdfGeneratedAt)}
+                  </span>
+                </div>
+              )}
+
               <div className="flex items-center gap-6">
                 <div className="text-right">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Due Date</p>
-                  {/* FIX: Use toDisplayDate — handles Timestamp | string | FieldValue safely */}
                   <p className={`text-sm font-bold ${invoice.status === 'overdue' ? 'text-red-600' : 'text-gray-900'}`}>
                     {toDisplayDate(invoice.dueDate)}
                   </p>
@@ -243,7 +356,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
             </div>
           </div>
 
-          {/* Items Table */}
+          {/* ── Items Table ────────────────────────────────────────────────── */}
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100 bg-gray-50/50">
               <h3 className="text-base font-bold text-gray-900">Invoice Items</h3>
@@ -275,7 +388,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
             </div>
           </div>
 
-          {/* Notes */}
+          {/* ── Notes ──────────────────────────────────────────────────────── */}
           {invoice.notes && (
             <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
               <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Notes</h4>
@@ -283,7 +396,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
             </div>
           )}
 
-          {/* Linked Payments Table */}
+          {/* ── Payments Table ─────────────────────────────────────────────── */}
           {invoicePayments.length > 0 && (
             <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden mt-8">
               <div className="p-6 border-b border-gray-100 bg-gray-50/50">
@@ -302,7 +415,6 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
                   <tbody className="divide-y divide-gray-50">
                     {invoicePayments.map((payment) => (
                       <tr key={payment.id}>
-                        {/* FIX: toDisplayDate handles paymentDate Timestamp | string | FieldValue */}
                         <td className="px-6 py-4 text-sm font-bold text-gray-900">
                           {toDisplayDate(payment.paymentDate)}
                         </td>
@@ -324,7 +436,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
           )}
         </div>
 
-        {/* Sidebar Actions & Totals */}
+        {/* ── Sidebar: Payment Status + Actions ─────────────────────────────── */}
         <div className="space-y-6">
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
@@ -400,8 +512,8 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoiceId }) => {
         </div>
       </div>
 
-      <AddPaymentModal 
-        isOpen={showPaymentModal} 
+      <AddPaymentModal
+        isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         initialInvoiceId={invoice.id}
         initialCustomerId={invoice.customerId}

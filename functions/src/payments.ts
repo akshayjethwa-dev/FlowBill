@@ -1,15 +1,24 @@
+/**
+ * payments.ts
+ * Idempotent recordManualPayment:
+ *  - Accepts a client-generated idempotencyKey
+ *  - On retry, returns the existing paymentId without re-applying side-effects
+ *  - Uses a single Firestore transaction for invoice update + payment record + customer balance
+ *  - Calls refreshDashboardSnapshot after commit
+ */
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
+import { refreshDashboardSnapshot } from "./dashboard";
 
 export const recordManualPayment = onCall(async (request) => {
   const { auth, data } = request;
 
-  // Check authentication
   if (!auth) {
     throw new HttpsError("unauthenticated", "User must be logged in to record payments.");
   }
 
   const {
+    idempotencyKey,    // REQUIRED: client-generated UUID per payment attempt
     merchantId,
     customerId,
     customerName,
@@ -20,105 +29,135 @@ export const recordManualPayment = onCall(async (request) => {
     referenceNumber,
     notes,
     paymentDate,
-    status = 'completed'
+    status = "completed",
   } = data;
 
-  if (!merchantId || !customerId || typeof amount !== 'number' || amount <= 0) {
+  // ── Basic validation ────────────────────────────────────────────────────────
+  if (!idempotencyKey || typeof idempotencyKey !== "string") {
+    throw new HttpsError("invalid-argument", "idempotencyKey is required.");
+  }
+  if (!merchantId || !customerId || typeof amount !== "number" || amount <= 0) {
     throw new HttpsError("invalid-argument", "Missing required fields or invalid amount.");
   }
 
   const db = admin.firestore();
 
+  // Idempotency doc lives under the merchant's operationKeys sub-collection
+  const idempotencyRef = db.doc(
+    `merchants/${merchantId}/operationKeys/${idempotencyKey}`
+  );
+  const paymentRef = db.collection(`merchants/${merchantId}/payments`).doc();
+
   try {
-    await db.runTransaction(async (transaction) => {
-      // 1. If linked to an invoice, validate balance and calculate new state
+    const result = await db.runTransaction(async (transaction) => {
+      // ── Idempotency check ───────────────────────────────────────────────────
+      const idempSnap = await transaction.get(idempotencyRef);
+      if (idempSnap.exists) {
+        return {
+          success: true,
+          paymentId: idempSnap.data()!.paymentId,
+          alreadyRecorded: true,
+        };
+      }
+
+      // ── Invoice validation & update ─────────────────────────────────────────
       if (invoiceId) {
-        const invoiceRef = db.collection(`merchants/${merchantId}/invoices`).doc(invoiceId);
+        const invoiceRef  = db.doc(`merchants/${merchantId}/invoices/${invoiceId}`);
         const invoiceSnap = await transaction.get(invoiceRef);
 
-        if (!invoiceSnap.exists) {
+        if (!invoiceSnap.exists)
           throw new HttpsError("not-found", "Invoice not found.");
-        }
 
-        const invoiceData = invoiceSnap.data();
-        const totalAmount = invoiceData?.totalAmount || 0;
-        const paidAmount = invoiceData?.paidAmount || 0;
-        const balanceDue = totalAmount - paidAmount;
+        const inv         = invoiceSnap.data()!;
+        const totalAmount = inv.totalAmount ?? 0;
+        const paidAmount  = inv.paidAmount  ?? 0;
+        const balanceDue  = totalAmount - paidAmount;
 
-        // Reject if amount is greater than remaining balance
         if (amount > balanceDue) {
           throw new HttpsError(
-            "failed-precondition", 
-            `Payment amount (₹${amount}) exceeds the remaining invoice balance (₹${balanceDue}).`
+            "failed-precondition",
+            `Payment ₹${amount} exceeds remaining balance ₹${balanceDue}.`
           );
         }
 
-        const newPaidAmount = paidAmount + amount;
-        let newStatus = invoiceData?.status || "unpaid";
-        if (newPaidAmount > 0 && newPaidAmount < totalAmount) {
-          newStatus = "partial";
-        }
-        if (newPaidAmount >= totalAmount) {
-          newStatus = "paid";
-        }
+        const newPaid  = paidAmount + amount;
+        let newStatus  = inv.status ?? "unpaid";
+        if (newPaid > 0 && newPaid < totalAmount) newStatus = "partial";
+        if (newPaid >= totalAmount)               newStatus = "paid";
 
         transaction.update(invoiceRef, {
-          paidAmount: newPaidAmount,
-          status: newStatus,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          paidAmount: newPaid,
+          balanceDue: totalAmount - newPaid,
+          status:     newStatus,
+          updatedAt:  admin.firestore.FieldValue.serverTimestamp(),
         });
       }
 
-      // 2. Create the Payment Record
-      const paymentRef = db.collection(`merchants/${merchantId}/payments`).doc();
+      // ── Payment record ──────────────────────────────────────────────────────
       transaction.set(paymentRef, {
         merchantId,
         customerId,
         customerName,
-        ...(invoiceId && { invoiceId }),
+        ...(invoiceId     && { invoiceId }),
         ...(invoiceNumber && { invoiceNumber }),
         amount,
         method,
-        referenceNumber: referenceNumber || null,
-        notes: notes || null,
-        paymentDate: paymentDate ? new Date(paymentDate) : admin.firestore.FieldValue.serverTimestamp(),
+        referenceNumber: referenceNumber ?? null,
+        notes:           notes           ?? null,
+        paymentDate:     paymentDate
+          ? new Date(paymentDate)
+          : admin.firestore.FieldValue.serverTimestamp(),
         status,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // 3. Update the Customer's outstanding balance
-      const customerRef = db.collection(`merchants/${merchantId}/customers`).doc(customerId);
+      // ── Customer outstanding balance ────────────────────────────────────────
+      const customerRef = db.doc(`merchants/${merchantId}/customers/${customerId}`);
       transaction.update(customerRef, {
         outstandingAmount: admin.firestore.FieldValue.increment(-amount),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt:         admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // 4. Log the activity for the audit trail
+      // ── Activity log ────────────────────────────────────────────────────────
       const activityRef = db.collection(`merchants/${merchantId}/activities`).doc();
       transaction.set(activityRef, {
         merchantId,
-        type: "payment_marked",
-        description: `Recorded payment of ₹${amount.toLocaleString('en-IN')} from ${customerName}`,
+        type:        "payment_marked",
+        description: `Recorded payment of ₹${amount.toLocaleString("en-IN")} from ${customerName}`,
         metadata: {
-          paymentId: paymentRef.id,
+          paymentId:    paymentRef.id,
           customerId,
           customerName,
           ...(invoiceId && { invoiceId, invoiceNumber }),
           amount,
-          method
+          method,
         },
-        userId: auth.uid,
-        userName: auth.token.name || "Unknown User",
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
+        userId:    auth.uid,
+        userName:  auth.token?.name ?? "Unknown User",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      // ── Store idempotency key ───────────────────────────────────────────────
+      transaction.set(idempotencyRef, {
+        paymentId:  paymentRef.id,
+        operation:  "record_manual_payment",
+        createdAt:  admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { success: true, paymentId: paymentRef.id, alreadyRecorded: false };
     });
 
-    return { success: true, message: "Payment recorded successfully" };
-  } catch (error: any) {
-    console.error("Transaction failure:", error);
-    if (error instanceof HttpsError) {
-      throw error;
+    // Refresh dashboard snapshot outside the transaction (best-effort)
+    try {
+      await refreshDashboardSnapshot(merchantId);
+    } catch (snapshotErr) {
+      console.warn("Dashboard snapshot refresh failed (non-critical):", snapshotErr);
     }
-    throw new HttpsError("internal", error.message || "An error occurred while recording the payment.");
+
+    return result;
+  } catch (error: any) {
+    console.error("recordManualPayment transaction failed:", error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", error.message ?? "An error occurred while recording the payment.");
   }
 });

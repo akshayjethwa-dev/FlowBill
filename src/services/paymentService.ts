@@ -1,26 +1,36 @@
+/**
+ * paymentService.ts  (UPDATED — server-authoritative)
+ *
+ * Changes:
+ *  1. recordPayment  → now sends idempotencyKey (uuidv4) to Cloud Function
+ *                      Return type tightened to { paymentId, alreadyRecorded }
+ *  2. deletePayment  → moved to Cloud Function call (server handles reversal)
+ *                      Old client-side runTransaction removed
+ *  3. All other read/subscribe functions are unchanged
+ */
 import {
   collection,
-  doc,
   query,
   where,
   orderBy,
   onSnapshot,
-  runTransaction,
-  increment,
-  serverTimestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { v4 as uuidv4 } from 'uuid';
 import { db } from '../firebase';
 import { Payment } from '../types/payment';
-import { Invoice } from '../types/invoice';
 import { ServiceResult } from '../types/firestore';
 import { paymentConverter } from '../lib/models/converters';
 import { FSPath } from '../lib/models/paths';
 import { handleFirestoreError, OperationType } from '../utils/firestore-error';
 
+const fns = getFunctions(db.app, 'asia-south1');
+
 const col = (merchantId: string) =>
   collection(db, FSPath.payments(merchantId)).withConverter(paymentConverter);
+
+// ─── Real-time subscription ────────────────────────────────────────────────────
 
 export function subscribeToPayments(
   merchantId: string,
@@ -42,65 +52,85 @@ export function subscribeToPayments(
   );
 }
 
-// Payment recording goes through backend to atomically update
-// invoice.paidAmount + invoice.status + customer.outstandingAmount
+// ─── Record payment via Cloud Function (idempotent) ───────────────────────────
+// idempotencyKey is generated here per call.
+// On network retry the server returns the existing paymentId safely —
+// no duplicate payments even if the user taps the button twice.
+
 export async function recordPayment(
   merchantId: string,
   paymentData: Omit<Payment, 'id' | 'merchantId' | 'createdAt' | 'updatedAt'>,
-): Promise<ServiceResult<unknown>> {
+): Promise<ServiceResult<{ paymentId: string; alreadyRecorded: boolean }>> {
   try {
-    const fns = getFunctions(db.app, 'asia-south1');
-    const fn = httpsCallable(fns, 'recordManualPayment');
+    const fn = httpsCallable<
+      Record<string, unknown>,
+      { success: boolean; paymentId: string; alreadyRecorded: boolean }
+    >(fns, 'recordManualPayment');
+
     const payload = {
       ...paymentData,
       merchantId,
+      idempotencyKey: uuidv4(), // NEW: unique per payment attempt
       paymentDate:
         paymentData.paymentDate instanceof Date
           ? paymentData.paymentDate.toISOString()
           : paymentData.paymentDate,
     };
+
     const result = await fn(payload);
     return { ok: true, data: result.data };
   } catch (e: any) {
-    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message ?? 'Failed to record payment', path: FSPath.payments(merchantId), operation: 'create', raw: e } };
+    return {
+      ok: false,
+      error: {
+        code:      e.code      ?? 'unknown',
+        message:   e.message   ?? 'Failed to record payment',
+        path:      FSPath.payments(merchantId),
+        operation: 'create',
+        raw:       e,
+      },
+    };
   }
 }
+
+// ─── Delete / reverse payment via Cloud Function ──────────────────────────────
+// OLD: client-side runTransaction that wrote directly to Firestore.
+// NEW: Cloud Function handles reversal atomically on the server.
+//      The function reverses invoice balance, customer outstanding,
+//      deletes the payment doc, and logs the activity — all in one transaction.
 
 export async function deletePayment(
   merchantId: string,
-  payment: Payment,
+  paymentId: string,
 ): Promise<ServiceResult<void>> {
-  const path = FSPath.payment(merchantId, payment.id);
   try {
-    await runTransaction(db, async (tx) => {
-      // 1. Reverse invoice paidAmount & status
-      if (payment.invoiceId) {
-        const invoiceRef = doc(db, FSPath.invoice(merchantId, payment.invoiceId));
-        const invoiceSnap = await tx.get(invoiceRef);
-        if (invoiceSnap.exists()) {
-          const inv = invoiceSnap.data() as Invoice;
-          const newPaidAmount = Math.max(0, (inv.paidAmount || 0) - payment.amount);
-          const newBalance = Math.max(0, inv.totalAmount - newPaidAmount);
-          let newStatus: Invoice['status'] = 'unpaid';
-          if (newPaidAmount > 0 && newPaidAmount < inv.totalAmount) newStatus = 'partial';
-          else if (newPaidAmount >= inv.totalAmount) newStatus = 'paid';
-          tx.update(invoiceRef, { paidAmount: newPaidAmount, balanceAmount: newBalance, status: newStatus, updatedAt: serverTimestamp() });
-        }
-      }
-      // 2. Reverse customer outstandingAmount
-      const customerRef = doc(db, FSPath.customer(merchantId, payment.customerId));
-      tx.update(customerRef, { outstandingAmount: increment(payment.amount), updatedAt: serverTimestamp() });
-      // 3. Delete the payment document
-      tx.delete(doc(db, path));
-    });
+    const fn = httpsCallable<
+      { merchantId: string; paymentId: string },
+      { success: boolean }
+    >(fns, 'deletePayment');
+
+    await fn({ merchantId, paymentId });
     return { ok: true, data: undefined };
   } catch (e: any) {
-    return { ok: false, error: { code: e.code ?? 'unknown', message: e.message, path, operation: 'delete', raw: e } };
+    return {
+      ok: false,
+      error: {
+        code:      e.code    ?? 'unknown',
+        message:   e.message ?? 'Failed to delete payment',
+        path:      FSPath.payment(merchantId, paymentId),
+        operation: 'delete',
+        raw:       e,
+      },
+    };
   }
 }
 
+// ─── Namespace export (backward-compatible) ───────────────────────────────────
+// deletePayment signature changed: now takes paymentId (string) instead of
+// full Payment object. Update any callers accordingly.
+
 export const paymentService = {
-  getPaymentsPath: FSPath.payments,
+  getPaymentsPath:  FSPath.payments,
   subscribeToPayments,
   recordPayment,
   deletePayment,

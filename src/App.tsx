@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { MerchantProvider } from './context/MerchantContext';
 import { ToastProvider } from './components/shared/Toast';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { PageContainer, PageHeader } from './components/layout/PageContainer';
 import { OnboardingFlow } from './components/onboarding/OnboardingFlow';
+import { AcceptInvitePage } from './pages/AcceptInvitePage';
 
 import { DashboardHome } from './pages/DashboardHome';
-// FIXED: Removed curly braces for default import
-import CustomerList from './pages/CustomerList'; 
+import CustomerList from './pages/CustomerList';
 import { ProductList } from './pages/ProductList';
 import { OrderList } from './pages/OrderList';
 import { CreateOrder } from './pages/CreateOrder';
@@ -26,23 +27,27 @@ import ActivityLog from './pages/ActivityLog';
 import { SettingsPage } from './pages/SettingsPage';
 import { BillingPage } from './pages/BillingPage';
 
+// ── Detect invite token from URL ────────────────────────────────────
+function getInviteToken(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('token');
+}
+
 function AppContent() {
-  // ✅ Utilize the updated context which provides real-time profiles
   const { merchantProfile, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // Handle custom navigation events
+  // Check for invite token on load
+  const inviteToken = getInviteToken();
+  const isAcceptInvitePath = window.location.pathname === '/accept-invite' && !!inviteToken;
+
   useEffect(() => {
-    const handleNavigateEvent = (e: any) => {
-      setActiveTab(e.detail);
-    };
+    const handleNavigateEvent = (e: any) => setActiveTab(e.detail);
     window.addEventListener('navigate', handleNavigateEvent);
     return () => window.removeEventListener('navigate', handleNavigateEvent);
   }, []);
 
-  const handleNavigate = (id: string) => {
-    setActiveTab(id);
-  };
+  const handleNavigate = (id: string) => setActiveTab(id);
 
   if (loading) {
     return (
@@ -55,83 +60,79 @@ function AppContent() {
     );
   }
 
-  // ✅ New nested onboarding check (Step 4 of Authentication phase)
+  // ── Accept Invite Page (before normal auth gate) ─────────────────
+  if (isAcceptInvitePath) {
+    return <AcceptInvitePage token={inviteToken!} />;
+  }
+
+  // ── Onboarding for owners who haven't completed setup ────────────
   if (merchantProfile && !merchantProfile.onboarding?.completed) {
     return <OnboardingFlow onComplete={() => window.location.reload()} />;
   }
 
   const renderContent = () => {
-    // Handle parameterized routes
     if (activeTab.startsWith('estimate-detail:')) {
       const estimateId = activeTab.split(':')[1];
       return <EstimateDetail estimateId={estimateId} />;
     }
-
     if (activeTab.startsWith('invoice-detail:')) {
       const invoiceId = activeTab.split(':')[1];
       return <InvoiceDetail invoiceId={invoiceId} />;
     }
 
-    // ✅ Enforcing RBAC locally on specific route rendering
     switch (activeTab) {
-      case 'dashboard':
-        return <DashboardHome />;
-      case 'customers':
-        return <CustomerList />;
+      case 'dashboard': return <DashboardHome />;
+      case 'customers': return <CustomerList />;
       case 'inventory':
       case 'products':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin', 'staff']}>
+          <ProtectedRoute allowedRoles={['owner', 'staff']}>
             <ProductList />
           </ProtectedRoute>
         );
-      case 'orders':
-        return <OrderList />;
+      case 'orders': return <OrderList />;
       case 'create-order':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin', 'staff']}>
+          <ProtectedRoute allowedRoles={['owner', 'staff']}>
             <CreateOrder />
           </ProtectedRoute>
         );
-      case 'estimates':
-        return <EstimateList />;
-      case 'invoices':
-        return <InvoiceList />;
+      case 'estimates': return <EstimateList />;
+      case 'invoices': return <InvoiceList />;
       case 'create-invoice':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin', 'staff']}>
+          <ProtectedRoute allowedRoles={['owner', 'staff', 'accountant']}>
             <CreateInvoice />
           </ProtectedRoute>
         );
       case 'reminders':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin', 'accountant']}>
+          <ProtectedRoute allowedRoles={['owner', 'accountant']}>
             <ReminderCenter />
           </ProtectedRoute>
         );
       case 'reminder-history':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin', 'accountant']}>
+          <ProtectedRoute allowedRoles={['owner', 'accountant']}>
             <ReminderHistoryLog />
           </ProtectedRoute>
         );
-      case 'payments':
-        return <PaymentList />;
+      case 'payments': return <PaymentList />;
       case 'ledger':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin', 'accountant']}>
+          <ProtectedRoute allowedRoles={['owner', 'accountant']}>
             <LedgerPage />
           </ProtectedRoute>
         );
       case 'activity-log':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin']}>
+          <ProtectedRoute allowedRoles={['owner']}>
             <ActivityLog />
           </ProtectedRoute>
         );
       case 'settings':
         return (
-          <ProtectedRoute allowedRoles={['owner', 'admin']}>
+          <ProtectedRoute allowedRoles={['owner']}>
             <SettingsPage />
           </ProtectedRoute>
         );
@@ -144,8 +145,8 @@ function AppContent() {
       default:
         return (
           <PageContainer>
-            <PageHeader 
-              title={activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} 
+            <PageHeader
+              title={activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
               subtitle={`Manage your ${activeTab}.`}
             />
             <div className="bg-white p-12 rounded-3xl border border-gray-200 text-center">
@@ -168,10 +169,11 @@ export default function App() {
     <ErrorBoundary>
       <ToastProvider>
         <AuthProvider>
-          {/* We turn off requireOnboarding here because AppContent handles the OnboardingFlow rendering locally */}
-          <ProtectedRoute requireOnboarding={false}>
-            <AppContent />
-          </ProtectedRoute>
+          <MerchantProvider>
+            <ProtectedRoute requireOnboarding={false}>
+              <AppContent />
+            </ProtectedRoute>
+          </MerchantProvider>
         </AuthProvider>
       </ToastProvider>
     </ErrorBoundary>

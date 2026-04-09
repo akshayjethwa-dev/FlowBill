@@ -1,17 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  onAuthStateChanged, 
-  User, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
+import {
+  onAuthStateChanged,
+  User,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { auth, db, functions } from '../firebase'; 
-import { Merchant, UserProfile } from '../types/user'; 
+import { auth, db, functions } from '../firebase';
+import { Merchant, UserProfile } from '../types/user';
 
 interface AuthContextType {
   user: User | null;
@@ -33,24 +33,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let profileUnsub: () => void;
-    let merchantUnsub: () => void;
+    let profileUnsub: (() => void) | undefined;
+    let merchantUnsub: (() => void) | undefined;
 
     const authUnsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (profileUnsub) profileUnsub();
+      if (merchantUnsub) merchantUnsub();
+
       if (firebaseUser) {
         setUser(firebaseUser);
 
-        try {
-          // 8. Session Refresh: Listen to user membership doc in real-time
-          // This immediately catches if an admin suspends this user while they are logged in.
-          const userRef = doc(db, 'users', firebaseUser.uid);
-          
-          profileUnsub = onSnapshot(userRef, async (userSnap) => {
-            if (userSnap.exists()) {
-              const userData = { id: userSnap.id, ...userSnap.data() } as UserProfile;
-              setUserProfile(userData);
+        const userRef = doc(db, 'users', firebaseUser.uid);
 
-              // Now listen to the linked Merchant document
+        profileUnsub = onSnapshot(userRef, async (userSnap) => {
+          if (userSnap.exists()) {
+            const userData = { id: userSnap.id, ...userSnap.data() } as UserProfile;
+            setUserProfile(userData);
+
+            // Only listen to merchant if the user has a merchantId
+            if (userData.merchantId) {
               const merchantRef = doc(db, 'merchants', userData.merchantId);
               merchantUnsub = onSnapshot(merchantRef, (merchantSnap) => {
                 if (merchantSnap.exists()) {
@@ -59,29 +60,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setLoading(false);
               });
             } else {
-              // Trigger backend setup if the profile doc doesn't exist yet
-              try {
-                const setupUserAccount = httpsCallable(functions, 'setupUserAccount');
-                await setupUserAccount();
-                await firebaseUser.getIdToken(true); 
-              } catch (err) {
-                console.warn("Backend setup function pending/failed.");
-                setLoading(false);
-              }
+              setLoading(false);
             }
-          });
-
-        } catch (error) {
-          console.error("Error fetching profiles", error);
-          setLoading(false);
-        }
+          } else {
+            // No profile yet — trigger backend setup (first-time owner login)
+            try {
+              const setupUserAccount = httpsCallable(functions, 'setupUserAccount');
+              await setupUserAccount();
+              await firebaseUser.getIdToken(true);
+            } catch (err) {
+              console.warn('Backend setup function pending/failed.', err);
+              setLoading(false);
+            }
+          }
+        });
       } else {
         setUser(null);
         setUserProfile(null);
         setMerchantProfile(null);
         setLoading(false);
-        if (profileUnsub) profileUnsub();
-        if (merchantUnsub) merchantUnsub();
       }
     });
 
@@ -91,8 +88,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (merchantUnsub) merchantUnsub();
     };
   }, []);
-
-  // ... (keep loginWithGoogle, loginWithEmail, registerWithEmail, logout implementations exactly as they were)
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
@@ -112,9 +107,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, userProfile, merchantProfile, loading, 
-      loginWithGoogle, loginWithEmail, registerWithEmail, logout 
+    <AuthContext.Provider value={{
+      user, userProfile, merchantProfile, loading,
+      loginWithGoogle, loginWithEmail, registerWithEmail, logout
     }}>
       {children}
     </AuthContext.Provider>
@@ -123,8 +118,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

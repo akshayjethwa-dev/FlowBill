@@ -19,6 +19,8 @@ export * from "./payments";
 
 export * from "./reminders";
 export * from "./conversions";
+export * from './merchants';
+export * from './users';
 
 export { gupshupWhatsappWebhook } from './whatsappWebhook';
 export * from './whatsappConfig';
